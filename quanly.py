@@ -32,63 +32,28 @@ COLUMNS = [
     "Hết hạn khách hàng", "Ráp khách khi hết hạn"
 ]
 
-# --- 2. KẾT NỐI GOOGLE SHEETS (DÙNG CHÌA KHÓA TRỰC TIẾP - ĐÃ FIX LỖI) ---
+# --- 2. KẾT NỐI GOOGLE SHEETS (ĐỌC FILE TRỰC TIẾP) ---
 @st.cache_resource
 def connect_google_sheet():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # --- CHÌA KHÓA ĐÃ ĐƯỢC ĐỊNH DẠNG LẠI THỦ CÔNG ---
-    # Sử dụng dấu nháy 3 (""") để giữ nguyên định dạng xuống dòng chuẩn của Google
-    pk = """-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCYsKDwkLUSY7+o
-22aW3I/FGx1Hk+wH5xTuztvX4etZBBpkliVz5DE31jNbEe29yb65IqG9CGcbcfjM
-Z1tcOCOV2jmm/9WrRFtZ5WVggCA0y4qAK/aP+s/GTwAalshORZhnisYEHwRKNGe+
-lYAhiCbISAbcNmtnNB4kM8vVIHiXgxN/KWNEsP/pN4AMwpSA61UWTsftvWlQQ1Ow
-lJkAcQFM8ordTpsagY8r+88viXJYb/rDS64GdbUMYGM3nWy/B0qqOF6x0PN50Plc
-sQuPn9SO3BlejnCng5IaSGOrH5zVsMp2fFVjWwDjHdxqZ7oM8ZxHCqkaLzU1cjS+
-SdlvBhMhAgMBAAECggEAOGdrFGLIWOI7LzPZKlqQy4WwI7xbgTHWVD9bC90bdNck
-rsqeTDjcC53Xe8lcMvM/PqGx8KQVfph0CYIWyDK+xoEGMhAozKskOcmZUPQTsZ0M
-7TsQSnCi50VQqwHPPcbMvVcQvf39NjI0rr0IR5rFhM/CpP9/XnDsv3/YyMLFeWYy
-rEmgH2QWc6LmOOYCM+GuBZujnkPxlZKfw1cUKsyNMnudy43sDCKKjWc+5JxliX/8
-0CG7L5fN9PjcavD/I41nshaXUj5fgcySB6200uMKKPYvXv6OtPv9TUXeeY3Zzo7B
-5EJwbABKqv55IixSzOqj4cOR2A/aBW4UDQNJKwdWhwKBgQDIkfrVgczmH22NSK0/
-wkc5rwcVE6RvxMFCmhFhhv7OHrVMyHrSujwSZnB0R1tH8k5WuM4nACEZzLPbxjYd
-rZp0pNdXJfR0fzLndDNMrsaI8An0qHR3s/TAUFi7RZdYaBkMoHvkYwETkMvr7XcJ
-JIuqxZIPBXMgrL407vsSFaWjxwKBgQDC4zJNphWQYJjAqVacXFfQZX3GBjaQPXDO
-S50HVKPEbKVSsGEOG6tZJbBHE4WGLiJ2V7WKsMtqBauSwR0uhmM/a8iMUzZgHE/V
-Af56VZX+j0ntHrmVxMvFudnK7ZFpCZnUnOmcBLzE4zFPlOxdzSYSMoi0mvq7gAwF
-O8VLUwxB1wKBgB64bUkChpXAvpDjTtXzNeGZ82XBCnCsHEXNP1hGywRbI73M/zMD
-n2vaEONegpa0gFc8GydSF7/R4MKKy4MkMgIntWv9vkGRsgRNggX+xx32VjAJFT24
-bIaAR/b3I8VAvIV4l0FWALY0eWd7ib32wQW5GTP/y7B3hPKqn/4XHrXFAoGACdiO
-nwuoBT5MGVe0z3t+2EF4ZDvGH+1quJFrYoZtK6xNger1TFArjPpxeHXNBiVoilAO
-FO6vqDCXJXfqMIKLmxWn8Sb3FU343osWPzn5tP2qP3eQ6rchkGC+Vxk/gm4AvpQa
-3U4D93J++EVO18JYjQzOiUlXJ4flk5Icepy8fssCgYEAhiu41mDpEnrkXjqtgMZ4
-UYUjFW5HsD64jC7MEINHqyn7Ve2H4F9WR5zYyo4zM1zEU0LI4BvogEr3IVtaie3W
-DYxOigPZbeAf+NP2LB9HdXgZASaQRUz0ZB6kK0dq6L7Tpec4cPJBYRq2ZTVyHE4U
-sfxc4BarFIpG4IVYNLATdeE=
------END PRIVATE KEY-----"""
-
-    creds_dict = {
-        "type": "service_account",
-        "project_id": "khach-san-trinh",
-        "private_key_id": "b158aae9828e1d30d6af5abb4dbc756e920da3f8",
-        "private_key": pk, # Dùng biến pk ở trên
-        "client_email": "kh-ch-s-n-trinh@khach-san-trinh.iam.gserviceaccount.com",
-        "client_id": "114568060735361082884",
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/kh-ch-s-n-trinh%40khach-san-trinh.iam.gserviceaccount.com",
-        "universe_domain": "googleapis.com"
-    }
-
+    # CÁCH CHẮC CHẮN NHẤT: ĐỌC FILE GỐC
+    # Không copy paste mã loằng ngoằng nữa
+    key_file = "service_account.json"
+    
     try:
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        # Kiểm tra xem file có tồn tại không
+        if not os.path.exists(key_file):
+            st.error(f"❌ LỖI TO: Không tìm thấy file '{key_file}' trên GitHub!")
+            st.warning("👉 Bạn hãy Upload file JSON chìa khóa lên GitHub và đổi tên nó thành service_account.json nhé.")
+            return None
+
+        creds = ServiceAccountCredentials.from_json_keyfile_name(key_file, scope)
         client = gspread.authorize(creds)
         sh = client.open(SHEET_NAME)
         return sh
     except Exception as e:
-        st.error(f"❌ Lỗi kết nối Google Sheets: {e}")
+        st.error(f"❌ Lỗi kết nối: {e}")
         return None
 
 def load_data(tab_name):
