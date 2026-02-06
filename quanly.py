@@ -32,12 +32,12 @@ COLUMNS = [
     "Hết hạn khách hàng", "Ráp khách khi hết hạn"
 ]
 
-# --- 2. KẾT NỐI GOOGLE SHEETS ---
+# --- 2. KẾT NỐI GOOGLE SHEETS (ĐÃ SỬA LỖI JWT) ---
 @st.cache_resource
 def connect_google_sheet():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # CHÌA KHÓA CỦA BẠN (Đã nhúng sẵn)
+    # CHÌA KHÓA CỦA BẠN
     creds_dict = {
       "type": "service_account",
       "project_id": "khach-san-trinh",
@@ -53,6 +53,11 @@ def connect_google_sheet():
     }
 
     try:
+        # --- ĐOẠN SỬA LỖI QUAN TRỌNG ---
+        # Tự động thay thế các ký tự xuống dòng bị lỗi
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
         sh = client.open(SHEET_NAME)
@@ -86,17 +91,13 @@ def save_data(df, tab_name):
         except Exception as e:
             st.error(f"❌ Lỗi khi lưu: {e}")
 
-# --- 3. TIỆN ÍCH (ĐÃ SỬA LỖI HÀM TO_NUM) ---
+# --- 3. TIỆN ÍCH ---
 def to_num(val):
     if isinstance(val, str): 
         val = val.replace(',', '').replace('.', '').strip()
         if val == '' or val.lower() == 'nan': return 0
-    
-    # Cách xử lý an toàn hơn cho cả số và chuỗi
-    try:
-        return float(val)
-    except:
-        return 0
+    try: return float(val)
+    except: return 0
 
 def convert_df_to_excel(df):
     output = io.BytesIO()
@@ -153,7 +154,7 @@ with st.spinner("Đang tải dữ liệu từ Google Sheets..."):
 
 if not df_main.empty:
     if "Mã căn" in df_main.columns: df_main["Mã căn"] = df_main["Mã căn"].astype(str)
-    # df_main = df_main.dropna(how='all') # Tạm tắt dòng này để tránh xóa nhầm
+    # df_main = df_main.dropna(how='all') 
     for c in ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]:
         if c in df_main.columns: df_main[c] = pd.to_datetime(df_main[c], errors='coerce')
     for c in ["Giá", "Giá HĐ", "SALE THẢO", "SALE NGA", "SALE LINH", "Công ty", "Cá Nhân"]:
