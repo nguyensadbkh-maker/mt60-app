@@ -53,8 +53,7 @@ def connect_google_sheet():
     }
 
     try:
-        # --- ĐOẠN SỬA LỖI QUAN TRỌNG ---
-        # Tự động thay thế các ký tự xuống dòng bị lỗi
+        # --- ĐOẠN QUAN TRỌNG ĐÃ ĐƯỢC THÊM ---
         if "private_key" in creds_dict:
             creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
         
