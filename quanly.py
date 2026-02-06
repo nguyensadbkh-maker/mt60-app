@@ -35,38 +35,46 @@ COLUMNS = [
 # --- 2. GIAO DIỆN CHÍNH ---
 st.title("☁️ MT60 STUDIO - ONLINE")
 
-# --- 3. KHU VỰC ĐĂNG NHẬP (UPLOAD CHÌA KHÓA) ---
-st.sidebar.header("🔐 Đăng Nhập Hệ Thống")
-st.sidebar.info("Để bảo mật tuyệt đối, vui lòng tải file Chìa khóa (JSON) của bạn lên đây để mở khóa dữ liệu.")
+# --- 3. KHU VỰC ĐĂNG NHẬP ---
+st.sidebar.header("🔐 Đăng Nhập")
+st.sidebar.info("Vui lòng tải file JSON mới nhất bạn vừa tạo lên đây.")
 
-# Nút upload file chìa khóa
-uploaded_key = st.sidebar.file_uploader("Chọn file JSON từ máy tính", type=['json'])
+# Nút upload
+uploaded_key = st.sidebar.file_uploader("Chọn file JSON", type=['json'])
 
-# --- 4. HÀM KẾT NỐI (CHỈ CHẠY KHI CÓ FILE) ---
+# --- 4. HÀM KẾT NỐI (SIÊU MẠNH) ---
 @st.cache_resource
-def connect_google_sheet(json_file):
+def connect_google_sheet(file_obj):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
-        # Đọc trực tiếp từ file bạn vừa upload (Không sợ lỗi định dạng nữa)
-        json_file.seek(0) # Đưa con trỏ về đầu file
-        creds_dict = json.load(json_file)
+        # Đọc file dưới dạng Bytes rồi giải mã để tránh lỗi định dạng
+        file_content = file_obj.read().decode("utf-8")
+        creds_dict = json.loads(file_content)
         
+        # --- ĐOẠN NÀY LÀ BẢO HIỂM CUỐI CÙNG ---
+        # Nếu trong file JSON mới mà private_key vẫn bị lỗi (hiếm), nó sẽ tự sửa
+        if 'private_key' in creds_dict:
+             creds_dict['private_key'] = creds_dict['private_key'].replace('\\n', '\n')
+
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
         sh = client.open(SHEET_NAME)
         return sh
     except Exception as e:
-        st.error(f"❌ File chìa khóa không đúng hoặc lỗi kết nối: {e}")
+        # In lỗi chi tiết ra để biết đường sửa
+        st.error(f"❌ Lỗi: {e}")
         return None
 
-# --- 5. LOGIC CHƯƠNG TRÌNH ---
+# --- 5. LOGIC CHẠY APP ---
 if uploaded_key is not None:
-    # Nếu đã upload file -> Tiến hành kết nối
-    with st.spinner("Đang mở khóa dữ liệu..."):
+    # Reset con trỏ file (đề phòng)
+    uploaded_key.seek(0)
+    
+    with st.spinner("Đang kết nối với chìa khóa mới..."):
         sh = connect_google_sheet(uploaded_key)
     
     if sh:
-        st.sidebar.success("✅ Đã kết nối thành công!")
+        st.sidebar.success("✅ Đã kết nối!")
         
         # --- CÁC HÀM XỬ LÝ DỮ LIỆU ---
         def load_data(tab_name):
@@ -108,6 +116,8 @@ if uploaded_key is not None:
                 if col in df_fmt.columns:
                     df_fmt[col] = pd.to_datetime(df_fmt[col], errors='coerce').dt.strftime('%d/%m/%y').replace('NaT', '')
             return df_fmt
+        
+        def check_ai_ready(): return AI_AVAILABLE
 
         def parse_text_message(text):
             extracted = {}
@@ -123,7 +133,7 @@ if uploaded_key is not None:
             return extracted
 
         def parse_image_gemini(api_key, image):
-            if not AI_AVAILABLE: return None
+            if not check_ai_ready(): return None
             try:
                 client = genai.Client(api_key=api_key)
                 prompt = """Trích xuất JSON: {"ma_can": "số phòng", "ten_khach": "tên", "gia_thue": số_nguyên, "ngay_in": "YYYY-MM-DD", "ngay_out": "YYYY-MM-DD"}"""
@@ -133,7 +143,7 @@ if uploaded_key is not None:
             except: return None
 
         def ai_write_marketing(api_key, features, tone):
-            if not AI_AVAILABLE: return "Lỗi thư viện AI"
+            if not check_ai_ready(): return "Lỗi thư viện AI"
             try:
                 client = genai.Client(api_key=api_key)
                 res = client.models.generate_content(model="gemini-1.5-flash", contents=f"Viết bài Facebook thuê phòng Studio. Đặc điểm: {features}. Giọng: {tone}. Có Emoji.")
@@ -383,9 +393,6 @@ if uploaded_key is not None:
 
 else:
     # Nếu chưa upload chìa khóa thì hiện thông báo lớn
-    st.warning("👈 Vui lòng tải file **credentials.json** (File Chìa khóa) lên ở cột bên trái để bắt đầu.")
+    st.warning("👈 Vui lòng tải file **JSON mới nhất** bạn vừa tạo từ Google lên đây.")
     st.markdown("---")
-    st.write("### ❓ Hướng dẫn:")
-    st.write("1. Tìm file `.json` bạn đã tải về từ Google Cloud lúc đầu.")
-    st.write("2. Kéo thả file đó vào ô **'Chọn file JSON'** ở cột bên trái.")
-    st.write("3. Hệ thống sẽ tự động đăng nhập.")
+    st.info("💡 File cũ của bạn chắc chắn đã bị hỏng. Hãy dùng file mới tải về từ Google Cloud.")
