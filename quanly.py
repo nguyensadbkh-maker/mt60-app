@@ -37,22 +37,18 @@ st.title("☁️ MT60 STUDIO - ONLINE")
 
 # --- 3. KHU VỰC ĐĂNG NHẬP ---
 st.sidebar.header("🔐 Đăng Nhập")
-st.sidebar.info("Vui lòng tải file JSON mới nhất bạn vừa tạo lên đây.")
 
 # Nút upload
-uploaded_key = st.sidebar.file_uploader("Chọn file JSON", type=['json'])
+uploaded_key = st.sidebar.file_uploader("Chọn file JSON để mở khóa", type=['json'])
 
-# --- 4. HÀM KẾT NỐI (SIÊU MẠNH) ---
+# --- 4. HÀM KẾT NỐI ---
 @st.cache_resource
 def connect_google_sheet(file_obj):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
-        # Đọc file dưới dạng Bytes rồi giải mã để tránh lỗi định dạng
         file_content = file_obj.read().decode("utf-8")
         creds_dict = json.loads(file_content)
         
-        # --- ĐOẠN NÀY LÀ BẢO HIỂM CUỐI CÙNG ---
-        # Nếu trong file JSON mới mà private_key vẫn bị lỗi (hiếm), nó sẽ tự sửa
         if 'private_key' in creds_dict:
              creds_dict['private_key'] = creds_dict['private_key'].replace('\\n', '\n')
 
@@ -61,16 +57,14 @@ def connect_google_sheet(file_obj):
         sh = client.open(SHEET_NAME)
         return sh
     except Exception as e:
-        # In lỗi chi tiết ra để biết đường sửa
         st.error(f"❌ Lỗi: {e}")
         return None
 
 # --- 5. LOGIC CHẠY APP ---
 if uploaded_key is not None:
-    # Reset con trỏ file (đề phòng)
     uploaded_key.seek(0)
     
-    with st.spinner("Đang kết nối với chìa khóa mới..."):
+    with st.spinner("Đang kết nối..."):
         sh = connect_google_sheet(uploaded_key)
     
     if sh:
@@ -96,7 +90,6 @@ if uploaded_key is not None:
             except Exception as e:
                 st.error(f"❌ Lỗi khi lưu: {e}")
 
-        # --- TIỆN ÍCH ---
         def to_num(val):
             if isinstance(val, str): 
                 val = val.replace(',', '').replace('.', '').strip()
@@ -166,7 +159,7 @@ if uploaded_key is not None:
             if "Mã căn" in df_cp.columns: df_cp["Mã căn"] = df_cp["Mã căn"].astype(str)
             if "Tiền" in df_cp.columns: df_cp["Tiền"] = df_cp["Tiền"].apply(to_num)
 
-        # --- SIDEBAR THÔNG BÁO ---
+        # --- SIDEBAR THÔNG BÁO (ĐÃ NÂNG CẤP HIỂN THỊ TÒA) ---
         with st.sidebar:
             st.divider()
             st.header("🔔 Thông Báo")
@@ -183,10 +176,16 @@ if uploaded_key is not None:
                         for _, r in df_hd.iterrows():
                              d = (r['Ngày hết HĐ']-today).days
                              msg = "Đã hết hạn" if d < 0 else f"Còn {d} ngày"
-                             st.caption(f"{r['Mã căn']}: {msg}")
+                             # --- ĐOẠN NÀY ĐÃ ĐƯỢC SỬA ---
+                             toa_info = f" ({r['Toà']})" if str(r['Toà']).strip() != '' else ''
+                             st.caption(f"🏠 {r['Mã căn']}{toa_info}: {msg}")
+                             
                     if not df_kh.empty:
                         st.warning(f"🟡 {len(df_kh)} Khách sắp out")
-                        for _, r in df_kh.iterrows(): st.caption(f"{r['Mã căn']}: {(r['Ngày out']-today).days} ngày")
+                        for _, r in df_kh.iterrows(): 
+                            # --- ĐOẠN NÀY ĐÃ ĐƯỢC SỬA ---
+                            toa_info = f" ({r['Toà']})" if str(r['Toà']).strip() != '' else ''
+                            st.caption(f"🚪 {r['Mã căn']}{toa_info}: {(r['Ngày out']-today).days} ngày")
             
             if st.button("🔄 Tải lại dữ liệu (F5)"): 
                 st.cache_data.clear()
@@ -392,7 +391,4 @@ if uploaded_key is not None:
                     st.error(f"❌ File Excel bị lỗi: {e}")
 
 else:
-    # Nếu chưa upload chìa khóa thì hiện thông báo lớn
-    st.warning("👈 Vui lòng tải file **JSON mới nhất** bạn vừa tạo từ Google lên đây.")
-    st.markdown("---")
-    st.info("💡 File cũ của bạn chắc chắn đã bị hỏng. Hãy dùng file mới tải về từ Google Cloud.")
+    st.warning("👈 Vui lòng tải file **JSON Chìa Khóa** từ Google lên đây.")
