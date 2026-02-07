@@ -141,30 +141,36 @@ if uploaded_key is not None:
         df_main = load_data("HOP_DONG")
         df_cp = load_data("CHI_PHI")
 
-        # --- SỬA LỖI QUAN TRỌNG: CHUẨN HÓA DỮ LIỆU NGAY TỪ ĐẦU ---
+        # --- XỬ LÝ DỮ LIỆU CHI PHÍ (FIX LỖI STREAMLIT API) ---
+        if df_cp.empty:
+            # Tạo bảng trống đúng chuẩn nếu chưa có dữ liệu
+            df_cp = pd.DataFrame(columns=COLUMNS_CP)
+            df_cp["Ngày"] = pd.Series(dtype='datetime64[ns]')
+            df_cp["Tiền"] = pd.Series(dtype='float')
+        else:
+            # Nếu có dữ liệu, ép kiểu chặt chẽ
+            if "Chỉ số đồng hồ" not in df_cp.columns: df_cp["Chỉ số đồng hồ"] = ""
+            
+            # Ép kiểu ngày (Lỗi thường xảy ra ở đây)
+            if "Ngày" in df_cp.columns:
+                df_cp["Ngày"] = pd.to_datetime(df_cp["Ngày"], errors='coerce')
+            
+            # Ép kiểu tiền
+            if "Tiền" in df_cp.columns:
+                df_cp["Tiền"] = pd.to_numeric(df_cp["Tiền"], errors='coerce').fillna(0)
+            
+            # Ép kiểu chuỗi cho các cột khác
+            df_cp["Mã căn"] = df_cp["Mã căn"].astype(str)
+            df_cp["Loại"] = df_cp["Loại"].astype(str)
+            df_cp["Chỉ số đồng hồ"] = df_cp["Chỉ số đồng hồ"].astype(str)
+
+        # Xử lý bảng Hợp đồng
         if not df_main.empty:
             if "Mã căn" in df_main.columns: df_main["Mã căn"] = df_main["Mã căn"].astype(str)
             for c in ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]:
                 if c in df_main.columns: df_main[c] = pd.to_datetime(df_main[c], errors='coerce')
             for c in ["Giá", "Giá HĐ", "SALE THẢO", "SALE NGA", "SALE LINH", "Công ty", "Cá Nhân"]:
                 if c in df_main.columns: df_main[c] = df_main[c].apply(to_num)
-
-        # Xử lý đặc biệt cho Chi Phí để tránh lỗi StreamlitAPIException
-        if df_cp.empty:
-            # Nếu chưa có dữ liệu, tạo bảng trống với đúng định dạng cột
-            df_cp = pd.DataFrame({
-                "Ngày": pd.Series(dtype='datetime64[ns]'),
-                "Mã căn": pd.Series(dtype='str'),
-                "Loại": pd.Series(dtype='str'),
-                "Tiền": pd.Series(dtype='float'),
-                "Chỉ số đồng hồ": pd.Series(dtype='str')
-            })
-        else:
-            # Nếu đã có dữ liệu, ép kiểu mạnh tay
-            if "Chỉ số đồng hồ" not in df_cp.columns: df_cp["Chỉ số đồng hồ"] = ""
-            if "Ngày" in df_cp.columns: df_cp["Ngày"] = pd.to_datetime(df_cp["Ngày"], errors='coerce')
-            if "Mã căn" in df_cp.columns: df_cp["Mã căn"] = df_cp["Mã căn"].astype(str)
-            if "Tiền" in df_cp.columns: df_cp["Tiền"] = df_cp["Tiền"].apply(to_num)
 
         # --- SIDEBAR THÔNG BÁO ---
         with st.sidebar:
@@ -329,7 +335,7 @@ if uploaded_key is not None:
                 except Exception as e:
                     st.error(f"❌ File Excel bị lỗi: {e}")
 
-        # --- TAB 3: CHI PHÍ NỘI BỘ (ĐÃ SỬA LỖI NGÀY) ---
+        # --- TAB 3: CHI PHÍ NỘI BỘ ---
         with tabs[2]:
             st.subheader("💸 Quản Lý Chi Phí Nội Bộ")
             
@@ -363,7 +369,7 @@ if uploaded_key is not None:
             st.divider()
             st.subheader("📤 Nhập Chi Phí Bằng Excel")
             
-            # --- FILE MẪU CÓ DÒNG VÍ DỤ ---
+            # --- FILE MẪU ---
             df_mau_cp = pd.DataFrame(columns=COLUMNS_CP)
             df_mau_cp.loc[0] = ["2023-10-01", "A101", "Điện", 500000, "1200 - 1300"] # Dòng mẫu
             st.download_button("📥 Tải File Mẫu Chi Phí (.xlsx)", convert_df_to_excel(df_mau_cp), "mau_chi_phi.xlsx")
@@ -401,8 +407,7 @@ if uploaded_key is not None:
 
             st.divider()
             
-            # Bảng hiển thị (Đã xử lý lỗi DateColumn)
-            # Chỉ định type DateColumn cho cột Ngày, các cột khác để tự động
+            # Bảng hiển thị
             edited_cp = st.data_editor(
                 df_cp, num_rows="dynamic", use_container_width=True,
                 column_config={
