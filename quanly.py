@@ -99,6 +99,15 @@ if uploaded_key is not None:
             try: return float(val)
             except: return 0
 
+        # --- HÀM ĐỊNH DẠNG TIỀN VIỆT NAM (10.000.000) ---
+        def fmt_vnd(val):
+            try:
+                if pd.isna(val) or val == "": return "-"
+                val = float(val)
+                return "{:,.0f}".format(val).replace(",", ".")
+            except:
+                return str(val)
+
         def convert_df_to_excel(df):
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -162,8 +171,6 @@ if uploaded_key is not None:
             for c in ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]:
                 if c in df_main.columns: df_main[c] = pd.to_datetime(df_main[c], errors='coerce')
             
-            # --- CẬP NHẬT DANH SÁCH CỘT CẦN CHUYỂN SANG SỐ ---
-            # Thêm các cột mới cần tính toán vào danh sách này
             cols_to_numeric = [
                 "Giá", "Giá HĐ", "SALE THẢO", "SALE NGA", "SALE LINH", "Công ty", "Cá Nhân",
                 "TT cho chủ nhà", "Cọc cho chủ nhà", "KH thanh toán", "KH cọc"
@@ -216,7 +223,7 @@ if uploaded_key is not None:
             "💸 Chi Phí Nội Bộ",        
             "📋 Tổng Hợp Dữ Liệu",      
             "🏠 Cảnh Báo Phòng",        
-            "💰 Quản Lý Chi Phí",      # Đã đổi tên
+            "💰 Quản Lý Chi Phí",      
             "💰 Doanh Thu"
         ])
 
@@ -419,7 +426,7 @@ if uploaded_key is not None:
             if st.button("💾 LƯU LÊN ĐÁM MÂY (CHI PHÍ)", type="primary"):
                 save_data(edited_cp, "CHI_PHI"); time.sleep(1); st.rerun()
 
-        # --- TAB 4: TỔNG HỢP DỮ LIỆU (ĐÃ THÊM TÌM KIẾM) ---
+        # --- TAB 4: TỔNG HỢP DỮ LIỆU ---
         with tabs[3]:
             st.subheader("📋 Dữ Liệu Hợp Đồng (Online)")
             if df_main.empty: 
@@ -450,7 +457,7 @@ if uploaded_key is not None:
             if st.button("💾 LƯU LÊN ĐÁM MÂY (HỢP ĐỒNG)", type="primary"):
                 save_data(edited_df, "HOP_DONG"); time.sleep(1); st.rerun()
 
-        # --- TAB 5: CẢNH BÁO PHÒNG (ĐÃ NÂNG CẤP CHIA 2 MỤC) ---
+        # --- TAB 5: CẢNH BÁO PHÒNG ---
         with tabs[4]:
             st.subheader("🏠 Trung Tâm Cảnh Báo")
             if not df_main.empty:
@@ -517,11 +524,10 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                             st.code(zalo_msg_out, language=None)
 
 
-        # --- TAB 6: QUẢN LÝ CHI PHÍ (ĐÃ NÂNG CẤP) ---
+        # --- TAB 6: QUẢN LÝ CHI PHÍ (ĐÃ NÂNG CẤP ĐỊNH DẠNG SỐ) ---
         with tabs[5]:
             st.subheader("💰 Quản Lý Chi Phí & Doanh Thu Chi Tiết")
             if not df_main.empty:
-                # 1. Chọn các cột cần hiển thị
                 cols_to_show = [
                     "Toà", "Mã căn",
                     "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà",
@@ -529,11 +535,9 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                     "SALE THẢO", "SALE NGA", "SALE LINH",
                     "Công ty", "Cá Nhân"
                 ]
-                # Lọc ra các cột có tồn tại trong dữ liệu để tránh lỗi
                 existing_cols = [c for c in cols_to_show if c in df_main.columns]
                 df_view = df_main[existing_cols].copy()
 
-                # 2. Đổi tên cột cho dễ hiểu
                 df_view = df_view.rename(columns={
                     "TT cho chủ nhà": "Thanh toán HĐ",
                     "Cọc cho chủ nhà": "Cọc HĐ",
@@ -544,17 +548,13 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                     "Cá Nhân": "HH Cá nhân"
                 })
 
-                # 3. Sắp xếp dữ liệu cho đẹp
                 if "Mã căn" in df_view.columns:
                      df_view = df_view.sort_values(by=["Toà", "Mã căn"])
                 else:
                      df_view = df_view.sort_values(by=["Toà"])
 
-                # 4. Thêm cột Ghi chú trống
                 df_view["Ghi chú"] = ""
 
-                # 5. Tính tổng cộng
-                # Danh sách các cột số cần cộng (theo tên mới)
                 numeric_cols = [
                     "Giá HĐ", "Thanh toán HĐ", "Cọc HĐ", 
                     "Giá thuê", "Khách thanh toán", "Khách cọc", 
@@ -565,33 +565,19 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                 total_row = pd.DataFrame(df_view[numeric_cols].sum(numeric_only=True)).T
                 total_row["Toà"] = "TỔNG CỘNG"
                 total_row = total_row.fillna("")
-
-                # 6. Gộp lại thành bảng cuối cùng
+                
                 df_final_view = pd.concat([df_view, total_row], ignore_index=True)
 
-                # 7. Hiển thị
-                st.dataframe(
-                    df_final_view, 
-                    use_container_width=True,
-                    column_config={
-                        "Giá thuê": st.column_config.NumberColumn(format="%d"),
-                        "Giá HĐ": st.column_config.NumberColumn(format="%d"),
-                        "Thanh toán HĐ": st.column_config.NumberColumn(format="%d"),
-                        "Cọc HĐ": st.column_config.NumberColumn(format="%d"),
-                        "Khách thanh toán": st.column_config.NumberColumn(format="%d"),
-                        "Khách cọc": st.column_config.NumberColumn(format="%d"),
-                        "SALE THẢO": st.column_config.NumberColumn(format="%d"),
-                        "SALE NGA": st.column_config.NumberColumn(format="%d"),
-                        "SALE LINH": st.column_config.NumberColumn(format="%d"),
-                        "HH Công ty": st.column_config.NumberColumn(format="%d"),
-                        "HH Cá nhân": st.column_config.NumberColumn(format="%d"),
-                        "Ghi chú": st.column_config.TextColumn(width="medium")
-                    }
-                )
+                # --- ÁP DỤNG ĐỊNH DẠNG SỐ 10.000.000 ---
+                for col in numeric_cols:
+                    if col in df_final_view.columns:
+                        df_final_view[col] = df_final_view[col].apply(fmt_vnd)
+
+                st.dataframe(df_final_view, use_container_width=True)
             else:
                 st.info("Chưa có dữ liệu để tổng hợp.")
 
-        # --- TAB 7: DOANH THU ---
+        # --- TAB 7: DOANH THU (ĐÃ ĐỒNG BỘ CỘT VÀ ĐỊNH DẠNG) ---
         with tabs[6]:
             st.subheader("💰 Báo Cáo Doanh Thu & Lợi Nhuận")
             
@@ -624,13 +610,46 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                      cp_sum = df_filtered_cp.groupby("Mã căn")["Tiền"].sum().reset_index(); cp_sum.columns = ["Mã căn", "CP Nội Bộ"]
                 
                 final = pd.merge(df_filtered_hd, cp_sum, on="Mã căn", how="left").fillna(0)
+                
+                # --- CHUẨN BỊ BẢNG DOANH THU ---
                 final["Lợi Nhuận Net"] = final["Giá"] - final["Giá HĐ"] - final[["SALE THẢO", "SALE NGA", "SALE LINH"]].sum(axis=1) - final["CP Nội Bộ"] - final["Công ty"] - final["Cá Nhân"]
                 
-                grp = final.groupby("Toà")[["Giá", "Giá HĐ", "CP Nội Bộ", "Lợi Nhuận Net"]].sum().reset_index()
+                # Chọn cột hiển thị cho Doanh Thu (giống Tab Quản lý chi phí + CP Nội bộ + Net)
+                cols_revenue = [
+                    "Toà", 
+                    "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà",
+                    "Giá", "KH thanh toán", "KH cọc",
+                    "CP Nội Bộ", "Lợi Nhuận Net"
+                ]
+                existing_rev_cols = [c for c in cols_revenue if c in final.columns]
                 
+                # Gom nhóm theo Tòa
+                grp = final.groupby("Toà")[existing_rev_cols[1:]].sum(numeric_only=True).reset_index()
+                
+                # Đổi tên cột
+                grp = grp.rename(columns={
+                    "TT cho chủ nhà": "Thanh toán HĐ",
+                    "Cọc cho chủ nhà": "Cọc HĐ",
+                    "Giá": "Giá thuê",
+                    "KH thanh toán": "Khách thanh toán",
+                    "KH cọc": "Khách cọc"
+                })
+
                 if not grp.empty:
                     total = pd.DataFrame(grp.sum(numeric_only=True)).T; total["Toà"] = "TỔNG CỘNG"
-                    st.dataframe(pd.concat([grp, total], ignore_index=True).style.format(precision=0, thousands="."), use_container_width=True)
+                    df_final_revenue = pd.concat([grp, total], ignore_index=True)
+                    
+                    # --- ÁP DỤNG ĐỊNH DẠNG SỐ 10.000.000 ---
+                    rev_numeric_cols = [
+                        "Giá HĐ", "Thanh toán HĐ", "Cọc HĐ", 
+                        "Giá thuê", "Khách thanh toán", "Khách cọc", 
+                        "CP Nội Bộ", "Lợi Nhuận Net"
+                    ]
+                    for col in rev_numeric_cols:
+                        if col in df_final_revenue.columns:
+                            df_final_revenue[col] = df_final_revenue[col].apply(fmt_vnd)
+
+                    st.dataframe(df_final_revenue, use_container_width=True)
                 else:
                     st.warning("Không có dữ liệu trong tháng này.")
 
