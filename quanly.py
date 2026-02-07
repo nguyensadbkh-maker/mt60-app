@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import os
 import json
 import re
@@ -15,6 +15,14 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 # --- 1. CẤU HÌNH ---
 st.set_page_config(page_title="MT60 Cloud", layout="wide", page_icon="☁️")
+
+# --- CẤU HÌNH DANH SÁCH TÒA VÀ PHÒNG (BẠN SỬA Ở ĐÂY) ---
+DANH_SACH_NHA = {
+    "Tòa A": ["A101", "A102", "A201", "A202", "A301", "A302"],
+    "Tòa B": ["B101", "B102", "B201", "B202"],
+    "Tòa C": ["C101", "C102", "C201", "C202"],
+    "Khác": [] # Để nhập tay nếu cần
+}
 
 try:
     from google import genai
@@ -111,6 +119,15 @@ if uploaded_key is not None:
             return df_fmt
         
         def check_ai_ready(): return AI_AVAILABLE
+        
+        # Hàm cộng tháng đơn giản
+        def add_months(start_date, months):
+            try:
+                # Cách tính gần đúng (30 ngày/tháng) để tránh lỗi thư viện, sau đó người dùng có thể chỉnh lại ngày lẻ
+                new_date = start_date + timedelta(days=months*30)
+                return new_date
+            except:
+                return start_date
 
         def parse_text_message(text):
             extracted = {}
@@ -181,66 +198,137 @@ if uploaded_key is not None:
                 st.cache_data.clear()
                 st.rerun()
 
-        # --- CÁC TAB CHỨC NĂNG (ĐÃ SẮP XẾP LẠI) ---
+        # --- CÁC TAB CHỨC NĂNG ---
         tabs = st.tabs([
             "✍️ Nhập Liệu Thủ Công", 
             "📥 Nhập Liệu Bằng Excel", 
             "💸 Chi Phí Nội Bộ",        
             "📋 Tổng Hợp Dữ Liệu",      
-            "🏠 Cảnh Báo Phòng",        # Đưa lên trước
-            "💰 Tổng Hợp Chi Phí",      # Đưa xuống sau
+            "🏠 Cảnh Báo Phòng",        
+            "💰 Tổng Hợp Chi Phí",      
             "💰 Doanh Thu"
         ])
 
-        # --- TAB 1: NHẬP LIỆU THỦ CÔNG ---
+        # --- TAB 1: NHẬP LIỆU THỦ CÔNG (ĐÃ NÂNG CẤP) ---
         with tabs[0]:
-            st.subheader("🔮 Nhập Liệu Thông Minh")
-            c_txt, c_img = st.columns(2)
-            with c_txt:
-                txt = st.text_area("Tin nhắn Zalo:"); 
-                if st.button("Phân tích Text"): st.session_state['auto'] = parse_text_message(txt)
-            with c_img:
-                key_vis = st.text_input("API Key (Vision)", type="password", key="key_vis")
-                up = st.file_uploader("Upload ảnh", type=["jpg", "png"])
-                if up and key_vis and st.button("Phân tích Ảnh"):
-                    with st.spinner("AI đang đọc..."): st.session_state['auto'] = parse_image_gemini(key_vis, Image.open(up))
-
+            st.subheader("✍️ Nhập Liệu Hợp Đồng Mới")
+            
+            # --- PHẦN 1: CÔNG CỤ HỖ TRỢ (AI & TEXT) ---
+            with st.expander("🛠️ Công cụ hỗ trợ (Zalo / Hình ảnh)", expanded=False):
+                c_txt, c_img = st.columns(2)
+                with c_txt:
+                    txt = st.text_area("Dán tin nhắn Zalo vào đây:"); 
+                    if st.button("Phân tích Text"): st.session_state['auto'] = parse_text_message(txt)
+                with c_img:
+                    key_vis = st.text_input("API Key (Vision - Nếu có)", type="password", key="key_vis")
+                    up = st.file_uploader("Upload ảnh hợp đồng", type=["jpg", "png"])
+                    if up and key_vis and st.button("Phân tích Ảnh"):
+                        with st.spinner("AI đang đọc..."): st.session_state['auto'] = parse_image_gemini(key_vis, Image.open(up))
+            
             st.divider()
-            av = st.session_state.get('auto', {})
+            
+            # --- PHẦN 2: FORM NHẬP LIỆU CHÍNH (ĐÃ CẢI TIẾN) ---
+            av = st.session_state.get('auto', {}) # Lấy dữ liệu tự động nếu có
+            
             with st.form("main_form"):
-                c1, c2, c3, c4 = st.columns(4)
-                d = {}
-                with c1:
-                    d["Tòa nhà"] = st.text_input("Tòa nhà", value=str(av.get("toa_nha","")))
-                    d["Mã căn"] = st.text_input("Mã căn", value=str(av.get("ma_can","")))
-                    d["Toà"] = st.text_input("Toà")
-                    d["Chủ nhà - sale"] = st.text_input("Chủ nhà - sale")
-                with c2:
-                    d["Ngày ký"] = st.date_input("Ngày ký", date.today())
-                    d["Ngày hết HĐ"] = st.date_input("Ngày hết HĐ", date.today())
-                    d["Giá HĐ"] = st.number_input("Giá HĐ", min_value=0)
-                    d["TT cho chủ nhà"] = st.text_input("TT cho chủ nhà")
-                with c3:
-                    d["Tên khách thuê"] = st.text_input("Tên khách", value=str(av.get("ten_khach","")))
-                    def safe_d(v): 
-                        try: return pd.to_datetime(v).date() 
-                        except: return date.today()
-                    d["Ngày in"] = st.date_input("Ngày in", safe_d(av.get("ngay_in")))
-                    d["Ngày out"] = st.date_input("Ngày out", safe_d(av.get("ngay_out")))
-                    d["Giá"] = st.number_input("Giá thuê", min_value=0, value=int(av.get("gia_thue", 0) or 0))
-                with c4:
-                    d["Công ty"] = st.number_input("Công ty", min_value=0)
-                    d["Cá Nhân"] = st.number_input("Cá Nhân", min_value=0)
-                    d["SALE THẢO"] = st.number_input("Sale Thảo", min_value=0)
-                    d["SALE NGA"] = st.number_input("Sale Nga", min_value=0)
-                    d["SALE LINH"] = st.number_input("Sale Linh", min_value=0)
+                st.write("#### 1. Thông tin Phòng")
+                c1_1, c1_2, c1_3, c1_4 = st.columns(4)
                 
-                if st.form_submit_button("Lưu lên Cloud"):
-                    for k, v in d.items():
-                        if isinstance(v, (date, datetime)): d[k] = pd.to_datetime(v)
-                    new_row = pd.DataFrame([d])
+                # CẢI TIẾN 1: MENU THẢ XUỐNG CHO TÒA VÀ PHÒNG
+                with c1_1:
+                    ds_toa = list(DANH_SACH_NHA.keys())
+                    # Tự động chọn tòa nếu AI đoán được, nếu không thì mặc định cái đầu
+                    idx_toa = 0
+                    if av.get("toa_nha") in ds_toa: idx_toa = ds_toa.index(av.get("toa_nha"))
+                    chon_toa = st.selectbox("Chọn Tòa nhà", ds_toa, index=idx_toa)
+                
+                with c1_2:
+                    # Lấy danh sách phòng tương ứng với tòa đã chọn
+                    ds_phong = DANH_SACH_NHA.get(chon_toa, [])
+                    if not ds_phong: # Nếu là tòa 'Khác' hoặc danh sách rỗng thì cho nhập tay
+                        chon_can = st.text_input("Nhập Mã căn", value=str(av.get("ma_can","")))
+                    else:
+                        chon_can = st.selectbox("Chọn Mã căn", ds_phong)
+
+                with c1_3:
+                    chu_nha_sale = st.text_input("Chủ nhà - Sale")
+                with c1_4:
+                    gia_thue = st.number_input("Giá thuê khách trả", min_value=0, step=100000, value=int(av.get("gia_thue", 0) or 0))
+
+                st.write("#### 2. Thời gian & Hợp đồng")
+                c2_1, c2_2, c2_3, c2_4 = st.columns(4)
+                with c2_1:
+                    ngay_ky = st.date_input("Ngày ký HĐ", date.today())
+                with c2_2:
+                    # CẢI TIẾN 2: TỰ ĐỘNG TÍNH NGÀY
+                    thoi_han = st.selectbox("Thời hạn thuê", [6, 12, 1, 3, 24], format_func=lambda x: f"{x} tháng")
+                    # Tự động cộng tháng vào ngày ký
+                    ngay_het_han_auto = add_months(ngay_ky, thoi_han)
+                    
+                    ngay_het_hd = st.date_input("Ngày hết HĐ (Tự động tính)", value=ngay_het_han_auto)
+                with c2_3:
+                    ngay_in = st.date_input("Ngày khách vào (Check-in)", ngay_ky)
+                with c2_4:
+                    ngay_out = st.date_input("Ngày khách ra (Check-out)", ngay_het_hd)
+
+                st.write("#### 3. Thông tin Khách & Thanh toán")
+                c3_1, c3_2, c3_3, c3_4 = st.columns(4)
+                with c3_1:
+                    ten_khach = st.text_input("Tên khách thuê", value=str(av.get("ten_khach","")))
+                with c3_2:
+                    gia_hd = st.number_input("Giá HĐ (Giá gốc)", min_value=0, step=100000)
+                with c3_3:
+                    kh_coc = st.number_input("Khách cọc", min_value=0, step=100000)
+                with c3_4:
+                    tt_chu_nha = st.text_input("TT cho chủ nhà (Ghi chú)")
+
+                st.write("#### 4. Hoa hồng & Phí môi giới")
+                c4_1, c4_2, c4_3, c4_4 = st.columns(4)
+                with c4_1:
+                    sale_thao = st.number_input("Sale Thảo", min_value=0, step=50000)
+                with c4_2:
+                    sale_nga = st.number_input("Sale Nga", min_value=0, step=50000)
+                with c4_3:
+                    sale_linh = st.number_input("Sale Linh", min_value=0, step=50000)
+                with c4_4:
+                    cong_ty = st.number_input("Công ty giữ", min_value=0, step=50000)
+
+                # Nút Lưu
+                submitted = st.form_submit_button("💾 LƯU HỢP ĐỒNG MỚI", type="primary")
+                
+                if submitted:
+                    # Tạo dòng dữ liệu mới
+                    new_data = {
+                        "Tòa nhà": chon_toa,
+                        "Mã căn": chon_can,
+                        "Toà": chon_toa, # Lưu 2 cột giống nhau để tương thích code cũ
+                        "Chủ nhà - sale": chu_nha_sale,
+                        "Ngày ký": pd.to_datetime(ngay_ky),
+                        "Ngày hết HĐ": pd.to_datetime(ngay_het_hd),
+                        "Giá HĐ": gia_hd,
+                        "TT cho chủ nhà": tt_chu_nha,
+                        "Tên khách thuê": ten_khach,
+                        "Ngày in": pd.to_datetime(ngay_in),
+                        "Ngày out": pd.to_datetime(ngay_out),
+                        "Giá": gia_thue,
+                        "KH cọc": kh_coc,
+                        "Công ty": cong_ty,
+                        "SALE THẢO": sale_thao,
+                        "SALE NGA": sale_nga,
+                        "SALE LINH": sale_linh,
+                        # Các cột còn lại để trống
+                        "Cọc cho chủ nhà": "", "KH thanh toán": "", "Cá Nhân": "", "Hết hạn khách hàng": "", "Ráp khách khi hết hạn": ""
+                    }
+                    
+                    # Ghép vào bảng chính
+                    new_row = pd.DataFrame([new_data])
                     df_final = pd.concat([df_main, new_row], ignore_index=True)
-                    save_data(df_final, "HOP_DONG"); st.session_state['auto'] = {}; time.sleep(1); st.rerun()
+                    
+                    # Lưu lên Cloud
+                    save_data(df_final, "HOP_DONG")
+                    st.session_state['auto'] = {} # Xóa dữ liệu tạm
+                    time.sleep(1)
+                    st.rerun()
 
         # --- TAB 2: NHẬP LIỆU BẰNG EXCEL ---
         with tabs[1]:
@@ -322,7 +410,7 @@ if uploaded_key is not None:
             if st.button("💾 LƯU LÊN ĐÁM MÂY (HỢP ĐỒNG)", type="primary"):
                 save_data(edited_df, "HOP_DONG"); time.sleep(1); st.rerun()
 
-        # --- TAB 5: CẢNH BÁO PHÒNG (ĐÃ ĐƯA LÊN TRƯỚC) ---
+        # --- TAB 5: CẢNH BÁO PHÒNG ---
         with tabs[4]:
             st.subheader("🏠 Cảnh Báo Phòng Chi Tiết")
             if not df_main.empty:
@@ -343,7 +431,7 @@ if uploaded_key is not None:
                 df_alert['Cảnh báo HĐ'] = df_alert.apply(check_hd, axis=1)
                 st.dataframe(format_date_vn(df_alert[['Mã căn', 'Toà', 'Tên khách thuê', 'Ngày out', 'Trạng thái Khách', 'Ngày hết HĐ', 'Cảnh báo HĐ']]), use_container_width=True)
 
-        # --- TAB 6: TỔNG HỢP CHI PHÍ (ĐÃ ĐƯA XUỐNG SAU) ---
+        # --- TAB 6: TỔNG HỢP CHI PHÍ ---
         with tabs[5]:
             st.subheader("💰 Bảng Tổng Hợp Chi Phí Theo Tòa")
             if not df_main.empty:
