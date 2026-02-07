@@ -189,83 +189,15 @@ if uploaded_key is not None:
                 st.cache_data.clear()
                 st.rerun()
 
-        # --- CÁC TAB CHỨC NĂNG ---
-        # SỬA TÊN TAB 2: Biểu đồ -> Tổng Hợp Chi Phí
+        # --- CÁC TAB CHỨC NĂNG (ĐÃ SẮP XẾP LẠI) ---
         tabs = st.tabs([
-            "📊 Dữ Liệu", "💰 Tổng Hợp Chi Phí", "✍️ Marketing", "🔮 Nhập Liệu", 
-            "🏠 Cảnh Báo", "💸 Chi Phí", "💰 Doanh Thu", "📅 Lịch", "📥 Excel"
+            "✍️ Nhập Liệu Thủ Công", "📥 Nhập Liệu Bằng Excel", "📋 Tổng Hợp Dữ Liệu",
+            "💰 Tổng Hợp Chi Phí", "✍️ Marketing", 
+            "🏠 Cảnh Báo", "💸 Chi Phí", "💰 Doanh Thu"
         ])
 
-        # --- TAB 1: DỮ LIỆU ---
+        # --- TAB 1: NHẬP LIỆU THỦ CÔNG (ĐƯA LÊN ĐẦU) ---
         with tabs[0]:
-            st.subheader("📋 Dữ Liệu Hợp Đồng (Online)")
-            if df_main.empty: 
-                st.warning("⚠️ Hiện chưa có dữ liệu nào.")
-                df_show = pd.DataFrame(columns=COLUMNS)
-            else:
-                st.write(f"✅ Đang hiển thị {len(df_main)} dòng dữ liệu.")
-                df_show = df_main
-
-            edited_df = st.data_editor(
-                df_show, num_rows="dynamic", use_container_width=True,
-                column_config={
-                    "Ngày ký": st.column_config.DateColumn(format="DD/MM/YYYY"),
-                    "Ngày hết HĐ": st.column_config.DateColumn(format="DD/MM/YYYY"),
-                    "Ngày in": st.column_config.DateColumn(format="DD/MM/YYYY"),
-                    "Ngày out": st.column_config.DateColumn(format="DD/MM/YYYY"),
-                    "Giá": st.column_config.NumberColumn(format="%d"),
-                    "Mã căn": st.column_config.TextColumn(),
-                }
-            )
-            if st.button("💾 LƯU LÊN ĐÁM MÂY (HỢP ĐỒNG)", type="primary"):
-                save_data(edited_df, "HOP_DONG"); time.sleep(1); st.rerun()
-
-        # --- TAB 2: TỔNG HỢP CHI PHÍ (ĐÃ SỬA) ---
-        with tabs[1]:
-            st.subheader("💰 Bảng Tổng Hợp Chi Phí Theo Tòa")
-            if not df_main.empty:
-                # 1. Tính toán gom nhóm theo Tòa
-                df_sum = df_main.groupby("Toà")[["Giá", "Giá HĐ", "SALE THẢO", "SALE NGA", "SALE LINH"]].sum().reset_index()
-                
-                # 2. Thêm cột Ghi chú trống
-                df_sum["Ghi chú"] = ""
-                
-                # 3. Tính dòng TỔNG CỘNG
-                total_row = pd.DataFrame(df_sum.sum(numeric_only=True)).T
-                total_row["Toà"] = "TỔNG CỘNG"
-                total_row["Ghi chú"] = "" # Dòng tổng cũng cần cột ghi chú cho đều
-                
-                # 4. Gộp lại thành bảng cuối cùng
-                df_final_sum = pd.concat([df_sum, total_row], ignore_index=True)
-                
-                # 5. Hiển thị bảng (Không hiện biểu đồ nữa)
-                st.dataframe(
-                    df_final_sum, 
-                    use_container_width=True,
-                    column_config={
-                        "Giá": st.column_config.NumberColumn(format="%d"),
-                        "Giá HĐ": st.column_config.NumberColumn(format="%d"),
-                        "SALE THẢO": st.column_config.NumberColumn(format="%d"),
-                        "SALE NGA": st.column_config.NumberColumn(format="%d"),
-                        "SALE LINH": st.column_config.NumberColumn(format="%d"),
-                        "Ghi chú": st.column_config.TextColumn(width="medium")
-                    }
-                )
-            else:
-                st.info("Chưa có dữ liệu để tổng hợp.")
-
-        # --- TAB 3: MARKETING ---
-        with tabs[2]:
-            c1, c2 = st.columns([1, 2])
-            with c1:
-                key_mkt = st.text_input("Google API Key", type="password", key="key_mkt")
-                feat = st.text_area("Đặc điểm", height=100); tone = st.selectbox("Giọng văn", ["Sôi động", "Sang trọng", "Thân thiện"])
-                if st.button("Viết bài"): st.session_state['content_mkt'] = ai_write_marketing(key_mkt, feat, tone)
-            with c2:
-                if 'content_mkt' in st.session_state: st.text_area("Kết quả:", value=st.session_state['content_mkt'], height=400)
-
-        # --- TAB 4: NHẬP LIỆU ---
-        with tabs[3]:
             st.subheader("🔮 Nhập Liệu Thông Minh")
             c_txt, c_img = st.columns(2)
             with c_txt:
@@ -314,8 +246,92 @@ if uploaded_key is not None:
                     df_final = pd.concat([df_main, new_row], ignore_index=True)
                     save_data(df_final, "HOP_DONG"); st.session_state['auto'] = {}; time.sleep(1); st.rerun()
 
-        # --- TAB 5: CẢNH BÁO ---
+        # --- TAB 2: NHẬP LIỆU BẰNG EXCEL (THỨ 2) ---
+        with tabs[1]:
+            st.header("📤 Quản lý File Excel")
+            st.subheader("Bước 1: Tải file mẫu chuẩn")
+            df_mau = pd.DataFrame(columns=COLUMNS)
+            st.download_button("📥 Tải File Mẫu Hợp Đồng (.xlsx)", convert_df_to_excel(df_mau), "mau_hop_dong.xlsx")
+            st.divider()
+            st.subheader("Bước 2: Upload dữ liệu")
+            up = st.file_uploader("Chọn file Excel từ máy tính", type=["xlsx"], key="up_main")
+            if up is not None:
+                try:
+                    df_up = pd.read_excel(up)
+                    st.write(f"✅ Đã đọc được file: {len(df_up)} dòng.")
+                    if st.button("🚀 BẮT ĐẦU ĐỒNG BỘ LÊN CLOUD", type="primary"):
+                        with st.spinner("Đang xử lý và đồng bộ..."):
+                            for col in COLUMNS:
+                                if col not in df_up.columns: df_up[col] = ""
+                            df_up = df_up[COLUMNS]
+                            for col in ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]:
+                                if col in df_up.columns:
+                                    df_up[col] = pd.to_datetime(df_up[col], errors='coerce').dt.strftime('%Y-%m-%d')
+                            save_data(df_up, "HOP_DONG")
+                            time.sleep(2); st.rerun()
+                except Exception as e:
+                    st.error(f"❌ File Excel bị lỗi: {e}")
+
+        # --- TAB 3: TỔNG HỢP DỮ LIỆU (THỨ 3) ---
+        with tabs[2]:
+            st.subheader("📋 Dữ Liệu Hợp Đồng (Online)")
+            if df_main.empty: 
+                st.warning("⚠️ Hiện chưa có dữ liệu nào.")
+                df_show = pd.DataFrame(columns=COLUMNS)
+            else:
+                st.write(f"✅ Đang hiển thị {len(df_main)} dòng dữ liệu.")
+                df_show = df_main
+
+            edited_df = st.data_editor(
+                df_show, num_rows="dynamic", use_container_width=True,
+                column_config={
+                    "Ngày ký": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                    "Ngày hết HĐ": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                    "Ngày in": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                    "Ngày out": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                    "Giá": st.column_config.NumberColumn(format="%d"),
+                    "Mã căn": st.column_config.TextColumn(),
+                }
+            )
+            if st.button("💾 LƯU LÊN ĐÁM MÂY (HỢP ĐỒNG)", type="primary"):
+                save_data(edited_df, "HOP_DONG"); time.sleep(1); st.rerun()
+
+        # --- TAB 4: TỔNG HỢP CHI PHÍ ---
+        with tabs[3]:
+            st.subheader("💰 Bảng Tổng Hợp Chi Phí Theo Tòa")
+            if not df_main.empty:
+                df_sum = df_main.groupby("Toà")[["Giá", "Giá HĐ", "SALE THẢO", "SALE NGA", "SALE LINH"]].sum().reset_index()
+                df_sum["Ghi chú"] = ""
+                total_row = pd.DataFrame(df_sum.sum(numeric_only=True)).T
+                total_row["Toà"] = "TỔNG CỘNG"
+                total_row["Ghi chú"] = ""
+                df_final_sum = pd.concat([df_sum, total_row], ignore_index=True)
+                st.dataframe(
+                    df_final_sum, use_container_width=True,
+                    column_config={
+                        "Giá": st.column_config.NumberColumn(format="%d"),
+                        "Giá HĐ": st.column_config.NumberColumn(format="%d"),
+                        "SALE THẢO": st.column_config.NumberColumn(format="%d"),
+                        "SALE NGA": st.column_config.NumberColumn(format="%d"),
+                        "SALE LINH": st.column_config.NumberColumn(format="%d"),
+                        "Ghi chú": st.column_config.TextColumn(width="medium")
+                    }
+                )
+            else:
+                st.info("Chưa có dữ liệu để tổng hợp.")
+
+        # --- TAB 5: MARKETING ---
         with tabs[4]:
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                key_mkt = st.text_input("Google API Key", type="password", key="key_mkt")
+                feat = st.text_area("Đặc điểm", height=100); tone = st.selectbox("Giọng văn", ["Sôi động", "Sang trọng", "Thân thiện"])
+                if st.button("Viết bài"): st.session_state['content_mkt'] = ai_write_marketing(key_mkt, feat, tone)
+            with c2:
+                if 'content_mkt' in st.session_state: st.text_area("Kết quả:", value=st.session_state['content_mkt'], height=400)
+
+        # --- TAB 6: CẢNH BÁO ---
+        with tabs[5]:
             st.subheader("🏠 Cảnh Báo Chi Tiết")
             if not df_main.empty:
                 df_alert = df_main.sort_values('Ngày out').groupby(['Mã căn', 'Toà']).tail(1).copy()
@@ -335,8 +351,8 @@ if uploaded_key is not None:
                 df_alert['Cảnh báo HĐ'] = df_alert.apply(check_hd, axis=1)
                 st.dataframe(format_date_vn(df_alert[['Mã căn', 'Toà', 'Tên khách thuê', 'Ngày out', 'Trạng thái Khách', 'Ngày hết HĐ', 'Cảnh báo HĐ']]), use_container_width=True)
 
-        # --- TAB 6: CHI PHÍ ---
-        with tabs[5]:
+        # --- TAB 7: CHI PHÍ ---
+        with tabs[6]:
             st.subheader("💸 Quản Lý Chi Phí")
             with st.expander("🧮 Thêm mới & Máy tính", expanded=False):
                 c1, c2, c3, c4 = st.columns(4)
@@ -365,8 +381,8 @@ if uploaded_key is not None:
             if st.button("💾 LƯU LÊN ĐÁM MÂY (CHI PHÍ)", type="primary"):
                 save_data(edited_cp, "CHI_PHI"); time.sleep(1); st.rerun()
 
-        # --- TAB 7: DOANH THU ---
-        with tabs[6]:
+        # --- TAB 8: DOANH THU ---
+        with tabs[7]:
             st.subheader("💰 Báo Cáo Doanh Thu & Lợi Nhuận")
             if not df_main.empty:
                 cp_sum = pd.DataFrame(columns=["Mã căn", "CP Nội Bộ"])
@@ -377,41 +393,6 @@ if uploaded_key is not None:
                 grp = final.groupby("Toà")[["Giá", "Giá HĐ", "CP Nội Bộ", "Lợi Nhuận Net"]].sum().reset_index()
                 total = pd.DataFrame(grp.sum(numeric_only=True)).T; total["Toà"] = "TỔNG CỘNG"
                 st.dataframe(pd.concat([grp, total], ignore_index=True).style.format(precision=0, thousands="."), use_container_width=True)
-
-        # --- TAB 8: LỊCH ---
-        with tabs[7]:
-            if not df_main.empty:
-                df_cal = df_main.dropna(subset=['Ngày in', 'Ngày out'])
-                if not df_cal.empty:
-                    fig = px.timeline(df_cal, x_start="Ngày in", x_end="Ngày out", y="Mã căn", color="Toà", hover_name="Tên khách thuê")
-                    fig.update_yaxes(autorange="reversed")
-                    st.plotly_chart(fig, use_container_width=True)
-
-        # --- TAB 9: EXCEL ---
-        with tabs[8]:
-            st.header("📤 Quản lý File Excel")
-            st.subheader("Bước 1: Tải file mẫu chuẩn")
-            df_mau = pd.DataFrame(columns=COLUMNS)
-            st.download_button("📥 Tải File Mẫu Hợp Đồng (.xlsx)", convert_df_to_excel(df_mau), "mau_hop_dong.xlsx")
-            st.divider()
-            st.subheader("Bước 2: Upload dữ liệu")
-            up = st.file_uploader("Chọn file Excel từ máy tính", type=["xlsx"], key="up_main")
-            if up is not None:
-                try:
-                    df_up = pd.read_excel(up)
-                    st.write(f"✅ Đã đọc được file: {len(df_up)} dòng.")
-                    if st.button("🚀 BẮT ĐẦU ĐỒNG BỘ LÊN CLOUD", type="primary"):
-                        with st.spinner("Đang xử lý và đồng bộ..."):
-                            for col in COLUMNS:
-                                if col not in df_up.columns: df_up[col] = ""
-                            df_up = df_up[COLUMNS]
-                            for col in ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]:
-                                if col in df_up.columns:
-                                    df_up[col] = pd.to_datetime(df_up[col], errors='coerce').dt.strftime('%Y-%m-%d')
-                            save_data(df_up, "HOP_DONG")
-                            time.sleep(2); st.rerun()
-                except Exception as e:
-                    st.error(f"❌ File Excel bị lỗi: {e}")
 
 else:
     st.warning("👈 Vui lòng tải file **JSON Chìa Khóa** từ Google lên đây.")
