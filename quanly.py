@@ -18,8 +18,8 @@ st.set_page_config(page_title="MT60 Cloud", layout="wide", page_icon="☁️")
 
 # --- CẤU HÌNH DANH SÁCH TÒA VÀ PHÒNG (BẠN SỬA Ở ĐÂY) ---
 DANH_SACH_NHA = {
-    "Tòa A": ["A101", "A102", "A201", "A202", "A301", "A302"],
-    "Tòa B": ["B101", "B102", "B201", "B202"],
+    "MT60-KH": ["MT60", "MT61"],
+    "MTVT-KH": ["OC1A", "OC2A", "OC1B", "OC2B","OC3"],
     "Tòa C": ["C101", "C102", "C201", "C202"],
     "Khác": [] # Để nhập tay nếu cần
 }
