@@ -24,6 +24,7 @@ except ImportError:
 
 SHEET_NAME = "MT60_DATABASE"
 
+# Cột Hợp Đồng
 COLUMNS = [
     "Tòa nhà", "Mã căn", "Toà", "Chủ nhà - sale", "Ngày ký", "Ngày hết HĐ", 
     "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Tên khách thuê", 
@@ -31,6 +32,9 @@ COLUMNS = [
     "Công ty", "Cá Nhân", "SALE THẢO", "SALE NGA", "SALE LINH", 
     "Hết hạn khách hàng", "Ráp khách khi hết hạn"
 ]
+
+# Cột Chi Phí
+COLUMNS_CP = ["Ngày", "Mã căn", "Loại", "Tiền", "Chỉ số đồng hồ"]
 
 # --- 2. GIAO DIỆN CHÍNH ---
 st.title("☁️ MT60 STUDIO - ONLINE")
@@ -139,11 +143,9 @@ if uploaded_key is not None:
         df_main = load_data("HOP_DONG")
         df_cp = load_data("CHI_PHI")
 
-        # Đảm bảo cột "Chỉ số đồng hồ" tồn tại trong df_cp
+        # Đảm bảo cột "Chỉ số đồng hồ" tồn tại
         if not df_cp.empty:
-            if "Chỉ số đồng hồ" not in df_cp.columns:
-                df_cp["Chỉ số đồng hồ"] = ""
-            
+            if "Chỉ số đồng hồ" not in df_cp.columns: df_cp["Chỉ số đồng hồ"] = ""
             if "Ngày" in df_cp.columns: df_cp["Ngày"] = pd.to_datetime(df_cp["Ngày"], errors='coerce')
             if "Mã căn" in df_cp.columns: df_cp["Mã căn"] = df_cp["Mã căn"].astype(str)
             if "Tiền" in df_cp.columns: df_cp["Tiền"] = df_cp["Tiền"].apply(to_num)
@@ -154,7 +156,6 @@ if uploaded_key is not None:
                 if c in df_main.columns: df_main[c] = pd.to_datetime(df_main[c], errors='coerce')
             for c in ["Giá", "Giá HĐ", "SALE THẢO", "SALE NGA", "SALE LINH", "Công ty", "Cá Nhân"]:
                 if c in df_main.columns: df_main[c] = df_main[c].apply(to_num)
-
 
         # --- SIDEBAR THÔNG BÁO ---
         with st.sidebar:
@@ -247,7 +248,6 @@ if uploaded_key is not None:
                     ngay_ky = st.date_input("Ngày ký HĐ", date.today())
                 with c2_2:
                     thoi_han = st.selectbox("Thời hạn thuê", [6, 12, 1, 3, 24], format_func=lambda x: f"{x} tháng")
-                    # Tính ngày hết hạn
                     try: ngay_het_han_auto = ngay_ky + pd.Timedelta(days=thoi_han*30)
                     except: ngay_het_han_auto = ngay_ky
                     ngay_het_hd = st.date_input("Ngày hết HĐ (Tự động tính)", value=ngay_het_han_auto)
@@ -320,10 +320,11 @@ if uploaded_key is not None:
                 except Exception as e:
                     st.error(f"❌ File Excel bị lỗi: {e}")
 
-        # --- TAB 3: CHI PHÍ NỘI BỘ (ĐÃ CẬP NHẬT THÊM CỘT CHỈ SỐ) ---
+        # --- TAB 3: CHI PHÍ NỘI BỘ (CÓ UPLOAD FILE) ---
         with tabs[2]:
             st.subheader("💸 Quản Lý Chi Phí Nội Bộ")
-            with st.expander("🧮 Thêm mới & Máy tính", expanded=True):
+            
+            with st.expander("🧮 Thêm mới Thủ Công", expanded=True):
                 # Máy tính
                 st.write("##### 🧮 Máy tính nhanh")
                 c_cal1, c_cal2, c_cal3, c_cal4 = st.columns(4)
@@ -334,37 +335,62 @@ if uploaded_key is not None:
                 
                 st.divider()
                 st.write("##### 📝 Nhập phiếu chi")
-                # Form nhập liệu - Đã mở rộng thành 5 cột
                 with st.form("cp_form"):
                     c1, c2, c3, c4, c5 = st.columns(5)
                     d = c1.date_input("Ngày", date.today())
                     can = c2.text_input("Mã căn")
                     loai = c3.selectbox("Loại", ["Điện", "Nước", "Net", "Dọn dẹp", "Khác"])
                     tien = c4.number_input("Tiền", value=float((sm-sc)*dg))
-                    # --- CỘT MỚI: CHỈ SỐ ĐỒNG HỒ ---
                     chi_so = c5.text_input("Chỉ số đồng hồ", placeholder="VD: 1200 - 1350")
                     
                     if st.form_submit_button("Lưu Chi Phí"):
                         new = pd.DataFrame([{
-                            "Mã căn": str(can).strip(), 
-                            "Loại": loai, 
-                            "Tiền": tien, 
-                            "Ngày": pd.to_datetime(d),
-                            "Chỉ số đồng hồ": chi_so # Lưu thêm cột này
+                            "Mã căn": str(can).strip(), "Loại": loai, "Tiền": tien, 
+                            "Ngày": pd.to_datetime(d), "Chỉ số đồng hồ": chi_so
                         }])
                         df_cp_new = pd.concat([df_cp, new], ignore_index=True)
                         save_data(df_cp_new, "CHI_PHI"); time.sleep(1); st.rerun()
-            
-            col_up, col_down = st.columns(2)
-            with col_down:
-                df_mau_cp = pd.DataFrame(columns=["Ngày", "Mã căn", "Loại", "Tiền", "Chỉ số đồng hồ"])
-                df_mau_cp.loc[0] = [date.today(), "101", "Điện", 500000, "1200 - 1300"]
-                st.download_button("📥 Tải File Mẫu Chi Phí (.xlsx)", convert_df_to_excel(df_mau_cp), "mau_chi_phi.xlsx")
-            
+
+            # --- TÍNH NĂNG MỚI: UPLOAD EXCEL CHI PHÍ ---
             st.divider()
-            if df_cp.empty: df_cp = pd.DataFrame(columns=["Ngày", "Mã căn", "Loại", "Tiền", "Chỉ số đồng hồ"])
+            st.subheader("📤 Nhập Chi Phí Bằng Excel")
             
-            # Cấu hình hiển thị bảng Chi phí
+            # Tải file mẫu
+            df_mau_cp = pd.DataFrame(columns=["Ngày", "Mã căn", "Loại", "Tiền", "Chỉ số đồng hồ"])
+            st.download_button("📥 Tải File Mẫu Chi Phí (.xlsx)", convert_df_to_excel(df_mau_cp), "mau_chi_phi.xlsx")
+            
+            # Upload file
+            up_cp = st.file_uploader("Chọn file Excel chi phí từ máy tính", type=["xlsx"], key="up_cp")
+            if up_cp is not None:
+                try:
+                    df_up_cp = pd.read_excel(up_cp)
+                    st.write(f"✅ Đã đọc được file: {len(df_up_cp)} dòng.")
+                    
+                    # Kiểm tra cột
+                    req_cols = ["Ngày", "Mã căn", "Loại", "Tiền"]
+                    missing = [c for c in req_cols if c not in df_up_cp.columns]
+                    
+                    if missing:
+                        st.error(f"❌ File thiếu cột: {', '.join(missing)}")
+                    else:
+                        if st.button("🚀 ĐỒNG BỘ CHI PHÍ LÊN CLOUD"):
+                            with st.spinner("Đang đồng bộ..."):
+                                # Chuẩn hóa dữ liệu
+                                if "Chỉ số đồng hồ" not in df_up_cp.columns: df_up_cp["Chỉ số đồng hồ"] = ""
+                                df_up_cp = df_up_cp[COLUMNS_CP] # Sắp xếp cột
+                                if "Ngày" in df_up_cp.columns:
+                                    df_up_cp["Ngày"] = pd.to_datetime(df_up_cp["Ngày"], errors='coerce')
+                                
+                                # Gộp và lưu (Giữ lại dữ liệu cũ, chỉ thêm mới)
+                                df_final_cp = pd.concat([df_cp, df_up_cp], ignore_index=True)
+                                save_data(df_final_cp, "CHI_PHI")
+                                time.sleep(1); st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Lỗi file: {e}")
+
+            st.divider()
+            
+            # Bảng hiển thị
             edited_cp = st.data_editor(
                 df_cp, num_rows="dynamic", use_container_width=True,
                 column_config={
