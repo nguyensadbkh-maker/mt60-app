@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import os
 import json
 import re
@@ -141,25 +141,17 @@ if uploaded_key is not None:
         df_main = load_data("HOP_DONG")
         df_cp = load_data("CHI_PHI")
 
-        # --- XỬ LÝ DỮ LIỆU CHI PHÍ (FIX LỖI STREAMLIT API) ---
+        # --- XỬ LÝ DỮ LIỆU CHI PHÍ ---
         if df_cp.empty:
-            # Tạo bảng trống đúng chuẩn nếu chưa có dữ liệu
             df_cp = pd.DataFrame(columns=COLUMNS_CP)
             df_cp["Ngày"] = pd.Series(dtype='datetime64[ns]')
             df_cp["Tiền"] = pd.Series(dtype='float')
         else:
-            # Nếu có dữ liệu, ép kiểu chặt chẽ
             if "Chỉ số đồng hồ" not in df_cp.columns: df_cp["Chỉ số đồng hồ"] = ""
-            
-            # Ép kiểu ngày (Lỗi thường xảy ra ở đây)
             if "Ngày" in df_cp.columns:
                 df_cp["Ngày"] = pd.to_datetime(df_cp["Ngày"], errors='coerce')
-            
-            # Ép kiểu tiền
             if "Tiền" in df_cp.columns:
                 df_cp["Tiền"] = pd.to_numeric(df_cp["Tiền"], errors='coerce').fillna(0)
-            
-            # Ép kiểu chuỗi cho các cột khác
             df_cp["Mã căn"] = df_cp["Mã căn"].astype(str)
             df_cp["Loại"] = df_cp["Loại"].astype(str)
             df_cp["Chỉ số đồng hồ"] = df_cp["Chỉ số đồng hồ"].astype(str)
@@ -420,15 +412,22 @@ if uploaded_key is not None:
             if st.button("💾 LƯU LÊN ĐÁM MÂY (CHI PHÍ)", type="primary"):
                 save_data(edited_cp, "CHI_PHI"); time.sleep(1); st.rerun()
 
-        # --- TAB 4: TỔNG HỢP DỮ LIỆU ---
+        # --- TAB 4: TỔNG HỢP DỮ LIỆU (ĐÃ THÊM TÌM KIẾM) ---
         with tabs[3]:
             st.subheader("📋 Dữ Liệu Hợp Đồng (Online)")
             if df_main.empty: 
                 st.warning("⚠️ Hiện chưa có dữ liệu nào.")
                 df_show = pd.DataFrame(columns=COLUMNS)
             else:
-                st.write(f"✅ Đang hiển thị {len(df_main)} dòng dữ liệu.")
+                # --- TÍNH NĂNG MỚI: TÌM KIẾM ---
+                search_term = st.text_input("🔍 Tìm kiếm nhanh (Nhập tên khách, số phòng...):")
                 df_show = df_main
+                
+                if search_term:
+                    # Lọc dữ liệu: Nếu tìm thấy từ khóa ở bất kỳ cột nào
+                    mask = df_show.astype(str).apply(lambda x: x.str.contains(search_term, case=False, na=False)).any(axis=1)
+                    df_show = df_show[mask]
+                    st.success(f"🔎 Tìm thấy {len(df_show)} kết quả.")
 
             edited_df = st.data_editor(
                 df_show, num_rows="dynamic", use_container_width=True,
@@ -444,26 +443,45 @@ if uploaded_key is not None:
             if st.button("💾 LƯU LÊN ĐÁM MÂY (HỢP ĐỒNG)", type="primary"):
                 save_data(edited_df, "HOP_DONG"); time.sleep(1); st.rerun()
 
-        # --- TAB 5: CẢNH BÁO PHÒNG ---
+        # --- TAB 5: CẢNH BÁO PHÒNG (ĐÃ THÊM COPY ZALO) ---
         with tabs[4]:
             st.subheader("🏠 Cảnh Báo Phòng Chi Tiết")
             if not df_main.empty:
                 df_alert = df_main.sort_values('Ngày out').groupby(['Mã căn', 'Toà']).tail(1).copy()
-                def check_khach(x): 
-                    if pd.isna(x): return "⚪ Trống"
-                    days = (x - today).days
-                    if days < 0: return "⚪ Trống (Đã out)"
-                    return f"🟡 Sắp out ({days} ngày)" if days <= 7 else "🟢 Đang ở"
+                
+                # Hàm kiểm tra
                 def check_hd(row):
                     x = row['Ngày hết HĐ']
-                    if pd.isna(x): return "❓ N/A"
+                    if pd.isna(x): return "N/A"
                     days = (x - today).days
-                    if days < 0: return "🔴 ĐÃ HẾT HẠN HĐ"
-                    if days <= 30: return f"⚠️ Sắp hết HĐ ({days} ngày)"
-                    return "✅ Còn hạn"
-                df_alert['Trạng thái Khách'] = df_alert['Ngày out'].apply(check_khach)
-                df_alert['Cảnh báo HĐ'] = df_alert.apply(check_hd, axis=1)
-                st.dataframe(format_date_vn(df_alert[['Mã căn', 'Toà', 'Tên khách thuê', 'Ngày out', 'Trạng thái Khách', 'Ngày hết HĐ', 'Cảnh báo HĐ']]), use_container_width=True)
+                    if days < 0: return "Hết hạn"
+                    if days <= 30: return "Sắp hết"
+                    return "Còn hạn"
+
+                # Lọc ra danh sách cần cảnh báo
+                df_warning = df_alert[df_alert.apply(lambda r: check_hd(r) in ["Hết hạn", "Sắp hết"], axis=1)]
+                
+                if df_warning.empty:
+                    st.success("✅ Không có phòng nào sắp hết hạn hợp đồng.")
+                else:
+                    st.warning(f"⚠️ Có {len(df_warning)} phòng cần chú ý!")
+                    
+                    for idx, row in df_warning.iterrows():
+                        days = (row['Ngày hết HĐ'] - today).days
+                        status = "ĐÃ QUÁ HẠN" if days < 0 else f"Còn {days} ngày"
+                        color = "red" if days < 0 else "orange"
+                        
+                        with st.expander(f"Phòng {row['Mã căn']} - {row['Tên khách thuê']} ({status})"):
+                            st.write(f"📅 Ngày hết HĐ: {row['Ngày hết HĐ'].strftime('%d/%m/%Y')}")
+                            
+                            # --- TÍNH NĂNG MỚI: TẠO TIN NHẮN ZALO ---
+                            st.write("👉 **Mẫu tin nhắn Zalo:**")
+                            zalo_msg = f"""Chào bạn {row['Tên khách thuê']},
+BQL Tòa nhà {row['Tòa nhà']} xin thông báo:
+Hợp đồng phòng {row['Mã căn']} của bạn sắp hết hạn vào ngày {row['Ngày hết HĐ'].strftime('%d/%m/%Y')}.
+Vui lòng liên hệ lại với chúng tôi để gia hạn hoặc làm thủ tục trả phòng.
+Cảm ơn bạn!"""
+                            st.code(zalo_msg, language=None) # Tạo khung copy
 
         # --- TAB 6: TỔNG HỢP CHI PHÍ ---
         with tabs[5]:
@@ -489,18 +507,54 @@ if uploaded_key is not None:
             else:
                 st.info("Chưa có dữ liệu để tổng hợp.")
 
-        # --- TAB 7: DOANH THU ---
+        # --- TAB 7: DOANH THU (ĐÃ THÊM LỌC THÁNG) ---
         with tabs[6]:
             st.subheader("💰 Báo Cáo Doanh Thu & Lợi Nhuận")
+            
+            # --- TÍNH NĂNG MỚI: LỌC THEO THÁNG ---
+            c_filter1, c_filter2 = st.columns(2)
+            sel_month = c_filter1.selectbox("Chọn Tháng", range(1, 13), index=date.today().month - 1)
+            sel_year = c_filter2.number_input("Chọn Năm", min_value=2020, max_value=2030, value=date.today().year)
+            
+            st.divider()
+            
             if not df_main.empty:
+                # 1. Lọc hợp đồng đang hoạt động trong tháng đã chọn
+                # Điều kiện: Ngày khách vào <= Cuối tháng chọn VÀ Ngày khách ra >= Đầu tháng chọn
+                start_date = pd.Timestamp(year=sel_year, month=sel_month, day=1)
+                if sel_month == 12:
+                    end_date = pd.Timestamp(year=sel_year+1, month=1, day=1)
+                else:
+                    end_date = pd.Timestamp(year=sel_year, month=sel_month+1, day=1)
+                
+                # Lọc Contracts
+                mask_hd = (df_main['Ngày in'] < end_date) & (df_main['Ngày out'] >= start_date)
+                df_filtered_hd = df_main[mask_hd].copy()
+                
+                # Lọc Chi Phí (theo ngày chi)
+                if not df_cp.empty and 'Ngày' in df_cp.columns:
+                    mask_cp = (df_cp['Ngày'] >= start_date) & (df_cp['Ngày'] < end_date)
+                    df_filtered_cp = df_cp[mask_cp].copy()
+                else:
+                    df_filtered_cp = pd.DataFrame(columns=["Mã căn", "Tiền"])
+
+                st.write(f"📊 **Kết quả kinh doanh Tháng {sel_month}/{sel_year}:**")
+                
+                # Tính toán lại với dữ liệu đã lọc
                 cp_sum = pd.DataFrame(columns=["Mã căn", "CP Nội Bộ"])
-                if not df_cp.empty:
-                     cp_sum = df_cp.groupby("Mã căn")["Tiền"].sum().reset_index(); cp_sum.columns = ["Mã căn", "CP Nội Bộ"]
-                final = pd.merge(df_main, cp_sum, on="Mã căn", how="left").fillna(0)
+                if not df_filtered_cp.empty:
+                     cp_sum = df_filtered_cp.groupby("Mã căn")["Tiền"].sum().reset_index(); cp_sum.columns = ["Mã căn", "CP Nội Bộ"]
+                
+                final = pd.merge(df_filtered_hd, cp_sum, on="Mã căn", how="left").fillna(0)
                 final["Lợi Nhuận Net"] = final["Giá"] - final["Giá HĐ"] - final[["SALE THẢO", "SALE NGA", "SALE LINH"]].sum(axis=1) - final["CP Nội Bộ"] - final["Công ty"] - final["Cá Nhân"]
+                
                 grp = final.groupby("Toà")[["Giá", "Giá HĐ", "CP Nội Bộ", "Lợi Nhuận Net"]].sum().reset_index()
-                total = pd.DataFrame(grp.sum(numeric_only=True)).T; total["Toà"] = "TỔNG CỘNG"
-                st.dataframe(pd.concat([grp, total], ignore_index=True).style.format(precision=0, thousands="."), use_container_width=True)
+                
+                if not grp.empty:
+                    total = pd.DataFrame(grp.sum(numeric_only=True)).T; total["Toà"] = "TỔNG CỘNG"
+                    st.dataframe(pd.concat([grp, total], ignore_index=True).style.format(precision=0, thousands="."), use_container_width=True)
+                else:
+                    st.warning("Không có dữ liệu trong tháng này.")
 
 else:
     st.warning("👈 Vui lòng tải file **JSON Chìa Khóa** từ Google lên đây.")
