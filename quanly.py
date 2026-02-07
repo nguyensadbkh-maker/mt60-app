@@ -159,7 +159,7 @@ if uploaded_key is not None:
             if "Mã căn" in df_cp.columns: df_cp["Mã căn"] = df_cp["Mã căn"].astype(str)
             if "Tiền" in df_cp.columns: df_cp["Tiền"] = df_cp["Tiền"].apply(to_num)
 
-        # --- SIDEBAR THÔNG BÁO (ĐÃ NÂNG CẤP HIỂN THỊ TÒA) ---
+        # --- SIDEBAR THÔNG BÁO ---
         with st.sidebar:
             st.divider()
             st.header("🔔 Thông Báo")
@@ -176,14 +176,12 @@ if uploaded_key is not None:
                         for _, r in df_hd.iterrows():
                              d = (r['Ngày hết HĐ']-today).days
                              msg = "Đã hết hạn" if d < 0 else f"Còn {d} ngày"
-                             # --- ĐOẠN NÀY ĐÃ ĐƯỢC SỬA ---
                              toa_info = f" ({r['Toà']})" if str(r['Toà']).strip() != '' else ''
                              st.caption(f"🏠 {r['Mã căn']}{toa_info}: {msg}")
                              
                     if not df_kh.empty:
                         st.warning(f"🟡 {len(df_kh)} Khách sắp out")
                         for _, r in df_kh.iterrows(): 
-                            # --- ĐOẠN NÀY ĐÃ ĐƯỢC SỬA ---
                             toa_info = f" ({r['Toà']})" if str(r['Toà']).strip() != '' else ''
                             st.caption(f"🚪 {r['Mã căn']}{toa_info}: {(r['Ngày out']-today).days} ngày")
             
@@ -192,8 +190,9 @@ if uploaded_key is not None:
                 st.rerun()
 
         # --- CÁC TAB CHỨC NĂNG ---
+        # SỬA TÊN TAB 2: Biểu đồ -> Tổng Hợp Chi Phí
         tabs = st.tabs([
-            "📊 Dữ Liệu", "📈 Biểu Đồ", "✍️ Marketing", "🔮 Nhập Liệu", 
+            "📊 Dữ Liệu", "💰 Tổng Hợp Chi Phí", "✍️ Marketing", "🔮 Nhập Liệu", 
             "🏠 Cảnh Báo", "💸 Chi Phí", "💰 Doanh Thu", "📅 Lịch", "📥 Excel"
         ])
 
@@ -221,15 +220,39 @@ if uploaded_key is not None:
             if st.button("💾 LƯU LÊN ĐÁM MÂY (HỢP ĐỒNG)", type="primary"):
                 save_data(edited_df, "HOP_DONG"); time.sleep(1); st.rerun()
 
-        # --- TAB 2: BIỂU ĐỒ ---
+        # --- TAB 2: TỔNG HỢP CHI PHÍ (ĐÃ SỬA) ---
         with tabs[1]:
+            st.subheader("💰 Bảng Tổng Hợp Chi Phí Theo Tòa")
             if not df_main.empty:
-                c1, c2 = st.columns(2)
-                with c1: st.bar_chart(df_main.groupby("Toà")["Giá"].sum())
-                with c2: st.bar_chart(df_main[["SALE THẢO", "SALE NGA", "SALE LINH"]].sum(), color="#FF4B4B")
-                st.divider()
+                # 1. Tính toán gom nhóm theo Tòa
                 df_sum = df_main.groupby("Toà")[["Giá", "Giá HĐ", "SALE THẢO", "SALE NGA", "SALE LINH"]].sum().reset_index()
-                st.dataframe(df_sum, use_container_width=True)
+                
+                # 2. Thêm cột Ghi chú trống
+                df_sum["Ghi chú"] = ""
+                
+                # 3. Tính dòng TỔNG CỘNG
+                total_row = pd.DataFrame(df_sum.sum(numeric_only=True)).T
+                total_row["Toà"] = "TỔNG CỘNG"
+                total_row["Ghi chú"] = "" # Dòng tổng cũng cần cột ghi chú cho đều
+                
+                # 4. Gộp lại thành bảng cuối cùng
+                df_final_sum = pd.concat([df_sum, total_row], ignore_index=True)
+                
+                # 5. Hiển thị bảng (Không hiện biểu đồ nữa)
+                st.dataframe(
+                    df_final_sum, 
+                    use_container_width=True,
+                    column_config={
+                        "Giá": st.column_config.NumberColumn(format="%d"),
+                        "Giá HĐ": st.column_config.NumberColumn(format="%d"),
+                        "SALE THẢO": st.column_config.NumberColumn(format="%d"),
+                        "SALE NGA": st.column_config.NumberColumn(format="%d"),
+                        "SALE LINH": st.column_config.NumberColumn(format="%d"),
+                        "Ghi chú": st.column_config.TextColumn(width="medium")
+                    }
+                )
+            else:
+                st.info("Chưa có dữ liệu để tổng hợp.")
 
         # --- TAB 3: MARKETING ---
         with tabs[2]:
