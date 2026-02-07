@@ -412,7 +412,7 @@ if uploaded_key is not None:
             if st.button("💾 LƯU LÊN ĐÁM MÂY (CHI PHÍ)", type="primary"):
                 save_data(edited_cp, "CHI_PHI"); time.sleep(1); st.rerun()
 
-        # --- TAB 4: TỔNG HỢP DỮ LIỆU (ĐÃ THÊM TÌM KIẾM) ---
+        # --- TAB 4: TỔNG HỢP DỮ LIỆU ---
         with tabs[3]:
             st.subheader("📋 Dữ Liệu Hợp Đồng (Online)")
             if df_main.empty: 
@@ -443,13 +443,15 @@ if uploaded_key is not None:
             if st.button("💾 LƯU LÊN ĐÁM MÂY (HỢP ĐỒNG)", type="primary"):
                 save_data(edited_df, "HOP_DONG"); time.sleep(1); st.rerun()
 
-        # --- TAB 5: CẢNH BÁO PHÒNG (ĐÃ THÊM COPY ZALO) ---
+        # --- TAB 5: CẢNH BÁO PHÒNG (ĐÃ NÂNG CẤP CHIA 2 MỤC) ---
         with tabs[4]:
-            st.subheader("🏠 Cảnh Báo Phòng Chi Tiết")
+            st.subheader("🏠 Trung Tâm Cảnh Báo")
             if not df_main.empty:
                 df_alert = df_main.sort_values('Ngày out').groupby(['Mã căn', 'Toà']).tail(1).copy()
                 
-                # Hàm kiểm tra
+                # --- PHẦN 1: CẢNH BÁO HẾT HẠN HỢP ĐỒNG ---
+                st.write("#### 1️⃣ Cảnh báo Hết Hạn Hợp Đồng")
+                
                 def check_hd(row):
                     x = row['Ngày hết HĐ']
                     if pd.isna(x): return "N/A"
@@ -458,30 +460,55 @@ if uploaded_key is not None:
                     if days <= 30: return "Sắp hết"
                     return "Còn hạn"
 
-                # Lọc ra danh sách cần cảnh báo
-                df_warning = df_alert[df_alert.apply(lambda r: check_hd(r) in ["Hết hạn", "Sắp hết"], axis=1)]
+                df_warning_hd = df_alert[df_alert.apply(lambda r: check_hd(r) in ["Hết hạn", "Sắp hết"], axis=1)]
                 
-                if df_warning.empty:
-                    st.success("✅ Không có phòng nào sắp hết hạn hợp đồng.")
+                if df_warning_hd.empty:
+                    st.success("✅ Không có phòng nào sắp hết hạn Hợp Đồng.")
                 else:
-                    st.warning(f"⚠️ Có {len(df_warning)} phòng cần chú ý!")
-                    
-                    for idx, row in df_warning.iterrows():
+                    for idx, row in df_warning_hd.iterrows():
                         days = (row['Ngày hết HĐ'] - today).days
                         status = "ĐÃ QUÁ HẠN" if days < 0 else f"Còn {days} ngày"
                         color = "red" if days < 0 else "orange"
                         
-                        with st.expander(f"Phòng {row['Mã căn']} - {row['Tên khách thuê']} ({status})"):
+                        with st.expander(f"🔴 {row['Mã căn']} - {row['Tên khách thuê']} ({status})"):
                             st.write(f"📅 Ngày hết HĐ: {row['Ngày hết HĐ'].strftime('%d/%m/%Y')}")
-                            
-                            # --- TÍNH NĂNG MỚI: TẠO TIN NHẮN ZALO ---
-                            st.write("👉 **Mẫu tin nhắn Zalo:**")
-                            zalo_msg = f"""Chào bạn {row['Tên khách thuê']},
+                            st.write("👉 **Mẫu tin nhắn Zalo Gia Hạn:**")
+                            zalo_msg_hd = f"""Chào bạn {row['Tên khách thuê']},
 BQL Tòa nhà {row['Tòa nhà']} xin thông báo:
 Hợp đồng phòng {row['Mã căn']} của bạn sắp hết hạn vào ngày {row['Ngày hết HĐ'].strftime('%d/%m/%Y')}.
-Vui lòng liên hệ lại với chúng tôi để gia hạn hoặc làm thủ tục trả phòng.
+Vui lòng liên hệ lại với chúng tôi để gia hạn Hợp đồng nhé.
 Cảm ơn bạn!"""
-                            st.code(zalo_msg, language=None) # Tạo khung copy
+                            st.code(zalo_msg_hd, language=None)
+
+                st.divider()
+
+                # --- PHẦN 2: CẢNH BÁO KHÁCH SẮP TRẢ PHÒNG (CHECK-OUT) ---
+                st.write("#### 2️⃣ Cảnh báo Khách Sắp Trả Phòng (Check-out)")
+                
+                def check_out(row):
+                    x = row['Ngày out']
+                    if pd.isna(x): return "N/A"
+                    days = (x - today).days
+                    if 0 <= days <= 7: return "Sắp out"
+                    return "Còn ở"
+                
+                df_warning_out = df_alert[df_alert.apply(lambda r: check_out(r) == "Sắp out", axis=1)]
+                
+                if df_warning_out.empty:
+                    st.success("✅ Không có phòng nào sắp trả phòng trong 7 ngày tới.")
+                else:
+                    st.warning(f"🚪 Có {len(df_warning_out)} phòng sắp trả phòng!")
+                    for idx, row in df_warning_out.iterrows():
+                        days = (row['Ngày out'] - today).days
+                        with st.expander(f"🚪 {row['Mã căn']} - {row['Tên khách thuê']} (Còn {days} ngày)"):
+                            st.write(f"📅 Ngày trả phòng dự kiến: {row['Ngày out'].strftime('%d/%m/%Y')}")
+                            st.write("👉 **Mẫu tin nhắn Zalo Trả Phòng:**")
+                            zalo_msg_out = f"""Chào bạn {row['Tên khách thuê']},
+Phòng {row['Mã căn']} của bạn sẽ đến ngày trả phòng vào {row['Ngày out'].strftime('%d/%m/%Y')}.
+Bạn vui lòng vệ sinh phòng sạch sẽ và liên hệ BQL để làm thủ tục bàn giao, chốt điện nước nhé.
+Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
+                            st.code(zalo_msg_out, language=None)
+
 
         # --- TAB 6: TỔNG HỢP CHI PHÍ ---
         with tabs[5]:
@@ -507,11 +534,10 @@ Cảm ơn bạn!"""
             else:
                 st.info("Chưa có dữ liệu để tổng hợp.")
 
-        # --- TAB 7: DOANH THU (ĐÃ THÊM LỌC THÁNG) ---
+        # --- TAB 7: DOANH THU ---
         with tabs[6]:
             st.subheader("💰 Báo Cáo Doanh Thu & Lợi Nhuận")
             
-            # --- TÍNH NĂNG MỚI: LỌC THEO THÁNG ---
             c_filter1, c_filter2 = st.columns(2)
             sel_month = c_filter1.selectbox("Chọn Tháng", range(1, 13), index=date.today().month - 1)
             sel_year = c_filter2.number_input("Chọn Năm", min_value=2020, max_value=2030, value=date.today().year)
@@ -519,19 +545,15 @@ Cảm ơn bạn!"""
             st.divider()
             
             if not df_main.empty:
-                # 1. Lọc hợp đồng đang hoạt động trong tháng đã chọn
-                # Điều kiện: Ngày khách vào <= Cuối tháng chọn VÀ Ngày khách ra >= Đầu tháng chọn
                 start_date = pd.Timestamp(year=sel_year, month=sel_month, day=1)
                 if sel_month == 12:
                     end_date = pd.Timestamp(year=sel_year+1, month=1, day=1)
                 else:
                     end_date = pd.Timestamp(year=sel_year, month=sel_month+1, day=1)
                 
-                # Lọc Contracts
                 mask_hd = (df_main['Ngày in'] < end_date) & (df_main['Ngày out'] >= start_date)
                 df_filtered_hd = df_main[mask_hd].copy()
                 
-                # Lọc Chi Phí (theo ngày chi)
                 if not df_cp.empty and 'Ngày' in df_cp.columns:
                     mask_cp = (df_cp['Ngày'] >= start_date) & (df_cp['Ngày'] < end_date)
                     df_filtered_cp = df_cp[mask_cp].copy()
@@ -540,7 +562,6 @@ Cảm ơn bạn!"""
 
                 st.write(f"📊 **Kết quả kinh doanh Tháng {sel_month}/{sel_year}:**")
                 
-                # Tính toán lại với dữ liệu đã lọc
                 cp_sum = pd.DataFrame(columns=["Mã căn", "CP Nội Bộ"])
                 if not df_filtered_cp.empty:
                      cp_sum = df_filtered_cp.groupby("Mã căn")["Tiền"].sum().reset_index(); cp_sum.columns = ["Mã căn", "CP Nội Bộ"]
