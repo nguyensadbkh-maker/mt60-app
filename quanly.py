@@ -141,19 +141,30 @@ if uploaded_key is not None:
         df_main = load_data("HOP_DONG")
         df_cp = load_data("CHI_PHI")
 
-        # Đảm bảo cột tồn tại
-        if not df_cp.empty:
-            if "Chỉ số đồng hồ" not in df_cp.columns: df_cp["Chỉ số đồng hồ"] = ""
-            if "Ngày" in df_cp.columns: df_cp["Ngày"] = pd.to_datetime(df_cp["Ngày"], errors='coerce')
-            if "Mã căn" in df_cp.columns: df_cp["Mã căn"] = df_cp["Mã căn"].astype(str)
-            if "Tiền" in df_cp.columns: df_cp["Tiền"] = df_cp["Tiền"].apply(to_num)
-
+        # --- SỬA LỖI QUAN TRỌNG: CHUẨN HÓA DỮ LIỆU NGAY TỪ ĐẦU ---
         if not df_main.empty:
             if "Mã căn" in df_main.columns: df_main["Mã căn"] = df_main["Mã căn"].astype(str)
             for c in ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]:
                 if c in df_main.columns: df_main[c] = pd.to_datetime(df_main[c], errors='coerce')
             for c in ["Giá", "Giá HĐ", "SALE THẢO", "SALE NGA", "SALE LINH", "Công ty", "Cá Nhân"]:
                 if c in df_main.columns: df_main[c] = df_main[c].apply(to_num)
+
+        # Xử lý đặc biệt cho Chi Phí để tránh lỗi StreamlitAPIException
+        if df_cp.empty:
+            # Nếu chưa có dữ liệu, tạo bảng trống với đúng định dạng cột
+            df_cp = pd.DataFrame({
+                "Ngày": pd.Series(dtype='datetime64[ns]'),
+                "Mã căn": pd.Series(dtype='str'),
+                "Loại": pd.Series(dtype='str'),
+                "Tiền": pd.Series(dtype='float'),
+                "Chỉ số đồng hồ": pd.Series(dtype='str')
+            })
+        else:
+            # Nếu đã có dữ liệu, ép kiểu mạnh tay
+            if "Chỉ số đồng hồ" not in df_cp.columns: df_cp["Chỉ số đồng hồ"] = ""
+            if "Ngày" in df_cp.columns: df_cp["Ngày"] = pd.to_datetime(df_cp["Ngày"], errors='coerce')
+            if "Mã căn" in df_cp.columns: df_cp["Mã căn"] = df_cp["Mã căn"].astype(str)
+            if "Tiền" in df_cp.columns: df_cp["Tiền"] = df_cp["Tiền"].apply(to_num)
 
         # --- SIDEBAR THÔNG BÁO ---
         with st.sidebar:
@@ -318,7 +329,7 @@ if uploaded_key is not None:
                 except Exception as e:
                     st.error(f"❌ File Excel bị lỗi: {e}")
 
-        # --- TAB 3: CHI PHÍ NỘI BỘ (ĐÃ SỬA FILE MẪU) ---
+        # --- TAB 3: CHI PHÍ NỘI BỘ (ĐÃ SỬA LỖI NGÀY) ---
         with tabs[2]:
             st.subheader("💸 Quản Lý Chi Phí Nội Bộ")
             
@@ -390,7 +401,8 @@ if uploaded_key is not None:
 
             st.divider()
             
-            # Bảng hiển thị
+            # Bảng hiển thị (Đã xử lý lỗi DateColumn)
+            # Chỉ định type DateColumn cho cột Ngày, các cột khác để tự động
             edited_cp = st.data_editor(
                 df_cp, num_rows="dynamic", use_container_width=True,
                 column_config={
