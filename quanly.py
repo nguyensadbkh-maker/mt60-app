@@ -185,10 +185,10 @@ if uploaded_key is not None:
         tabs = st.tabs([
             "✍️ Nhập Liệu Thủ Công", 
             "📥 Nhập Liệu Bằng Excel", 
-            "💸 Chi Phí Nội Bộ",        # Chuyển lên vị trí 3
-            "📋 Tổng Hợp Dữ Liệu",      # Chuyển xuống vị trí 4
-            "💰 Tổng Hợp Chi Phí",      # Tab báo cáo
-            "🏠 Cảnh Báo Phòng",        # Đổi tên
+            "💸 Chi Phí Nội Bộ",        
+            "📋 Tổng Hợp Dữ Liệu",      
+            "🏠 Cảnh Báo Phòng",        # Đưa lên trước
+            "💰 Tổng Hợp Chi Phí",      # Đưa xuống sau
             "💰 Doanh Thu"
         ])
 
@@ -268,7 +268,7 @@ if uploaded_key is not None:
                 except Exception as e:
                     st.error(f"❌ File Excel bị lỗi: {e}")
 
-        # --- TAB 3: CHI PHÍ NỘI BỘ (CHUYỂN LÊN ĐÂY) ---
+        # --- TAB 3: CHI PHÍ NỘI BỘ ---
         with tabs[2]:
             st.subheader("💸 Quản Lý Chi Phí Nội Bộ")
             with st.expander("🧮 Thêm mới & Máy tính", expanded=True):
@@ -322,8 +322,29 @@ if uploaded_key is not None:
             if st.button("💾 LƯU LÊN ĐÁM MÂY (HỢP ĐỒNG)", type="primary"):
                 save_data(edited_df, "HOP_DONG"); time.sleep(1); st.rerun()
 
-        # --- TAB 5: TỔNG HỢP CHI PHÍ (BÁO CÁO) ---
+        # --- TAB 5: CẢNH BÁO PHÒNG (ĐÃ ĐƯA LÊN TRƯỚC) ---
         with tabs[4]:
+            st.subheader("🏠 Cảnh Báo Phòng Chi Tiết")
+            if not df_main.empty:
+                df_alert = df_main.sort_values('Ngày out').groupby(['Mã căn', 'Toà']).tail(1).copy()
+                def check_khach(x): 
+                    if pd.isna(x): return "⚪ Trống"
+                    days = (x - today).days
+                    if days < 0: return "⚪ Trống (Đã out)"
+                    return f"🟡 Sắp out ({days} ngày)" if days <= 7 else "🟢 Đang ở"
+                def check_hd(row):
+                    x = row['Ngày hết HĐ']
+                    if pd.isna(x): return "❓ N/A"
+                    days = (x - today).days
+                    if days < 0: return "🔴 ĐÃ HẾT HẠN HĐ"
+                    if days <= 30: return f"⚠️ Sắp hết HĐ ({days} ngày)"
+                    return "✅ Còn hạn"
+                df_alert['Trạng thái Khách'] = df_alert['Ngày out'].apply(check_khach)
+                df_alert['Cảnh báo HĐ'] = df_alert.apply(check_hd, axis=1)
+                st.dataframe(format_date_vn(df_alert[['Mã căn', 'Toà', 'Tên khách thuê', 'Ngày out', 'Trạng thái Khách', 'Ngày hết HĐ', 'Cảnh báo HĐ']]), use_container_width=True)
+
+        # --- TAB 6: TỔNG HỢP CHI PHÍ (ĐÃ ĐƯA XUỐNG SAU) ---
+        with tabs[5]:
             st.subheader("💰 Bảng Tổng Hợp Chi Phí Theo Tòa")
             if not df_main.empty:
                 df_sum = df_main.groupby("Toà")[["Giá", "Giá HĐ", "SALE THẢO", "SALE NGA", "SALE LINH"]].sum().reset_index()
@@ -345,27 +366,6 @@ if uploaded_key is not None:
                 )
             else:
                 st.info("Chưa có dữ liệu để tổng hợp.")
-
-        # --- TAB 6: CẢNH BÁO PHÒNG (ĐỔI TÊN) ---
-        with tabs[5]:
-            st.subheader("🏠 Cảnh Báo Phòng Chi Tiết")
-            if not df_main.empty:
-                df_alert = df_main.sort_values('Ngày out').groupby(['Mã căn', 'Toà']).tail(1).copy()
-                def check_khach(x): 
-                    if pd.isna(x): return "⚪ Trống"
-                    days = (x - today).days
-                    if days < 0: return "⚪ Trống (Đã out)"
-                    return f"🟡 Sắp out ({days} ngày)" if days <= 7 else "🟢 Đang ở"
-                def check_hd(row):
-                    x = row['Ngày hết HĐ']
-                    if pd.isna(x): return "❓ N/A"
-                    days = (x - today).days
-                    if days < 0: return "🔴 ĐÃ HẾT HẠN HĐ"
-                    if days <= 30: return f"⚠️ Sắp hết HĐ ({days} ngày)"
-                    return "✅ Còn hạn"
-                df_alert['Trạng thái Khách'] = df_alert['Ngày out'].apply(check_khach)
-                df_alert['Cảnh báo HĐ'] = df_alert.apply(check_hd, axis=1)
-                st.dataframe(format_date_vn(df_alert[['Mã căn', 'Toà', 'Tên khách thuê', 'Ngày out', 'Trạng thái Khách', 'Ngày hết HĐ', 'Cảnh báo HĐ']]), use_container_width=True)
 
         # --- TAB 7: DOANH THU ---
         with tabs[6]:
