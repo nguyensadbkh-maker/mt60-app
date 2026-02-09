@@ -225,8 +225,8 @@ if uploaded_key is not None:
             "📋 Tổng Hợp Dữ Liệu",      
             "🏠 Cảnh Báo Phòng",        
             "💰 Quản Lý Chi Phí",      
-            "📊 Tổng Hợp Chi Phí", # Tab 7: Lợi nhuận
-            "💸 Quản Lý Dòng Tiền" # Tab 8: Dòng tiền (MỚI)
+            "📊 Tổng Hợp Chi Phí", 
+            "💸 Quản Lý Dòng Tiền" 
         ])
 
         # --- TAB 1: NHẬP LIỆU THỦ CÔNG ---
@@ -553,6 +553,7 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                     "Công ty", "Cá Nhân"
                 ]
                 
+                # --- THÊM TẠM THỜI CÁC CỘT NGÀY VÀO ĐỂ TÍNH TOÁN GHI CHÚ ---
                 cols_with_dates = cols_to_show + ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]
                 existing_cols = [c for c in cols_with_dates if c in df_main.columns]
                 
@@ -579,8 +580,12 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                         if pd.isna(x): return "?"
                         try: return x.strftime('%d/%m/%y')
                         except: return str(x)
-                    k = d(row.get('Ngày ký')); h = d(row.get('Ngày hết HĐ'))
-                    i = d(row.get('Ngày in')); o = d(row.get('Ngày out'))
+                    
+                    k = d(row.get('Ngày ký'))
+                    h = d(row.get('Ngày hết HĐ'))
+                    i = d(row.get('Ngày in'))
+                    o = d(row.get('Ngày out'))
+                    
                     note_parts = []
                     if k != "?" or h != "?": note_parts.append(f"HĐ: {k}-{h}")
                     if i != "?" or o != "?": note_parts.append(f"Khách: {i}-{o}")
@@ -616,13 +621,15 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
             else:
                 st.info("Chưa có dữ liệu để tổng hợp.")
 
-        # --- TAB 7: TỔNG HỢP CHI PHÍ (ĐÃ THÊM CỘT DOANH THU CHO THUÊ) ---
+        # --- TAB 7: TỔNG HỢP CHI PHÍ (MỚI - ĐÃ CẬP NHẬT GHI CHÚ VÀ GIẢI THÍCH ÂM) ---
         with tabs[6]:
             st.subheader("📊 Tổng Hợp Chi Phí & Lợi Nhuận")
             
             if not df_main.empty:
+                # 1. Chuẩn bị dữ liệu tính toán
                 df_calc = df_main.copy()
                 
+                # Hàm tính số tháng (tương đối: lấy số ngày / 30)
                 def get_months(start, end):
                     if pd.isna(start) or pd.isna(end): return 0
                     try:
@@ -630,46 +637,57 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                         return max(0, days / 30)
                     except: return 0
                     
-                # Tạo Ghi chú
+                # 2. Tính toán các cột phức tạp
+                # -- Chi phí hợp đồng: (Giá HĐ * Tháng)
+                df_calc['Tháng HĐ'] = df_calc.apply(lambda r: get_months(r['Ngày ký'], r['Ngày hết HĐ']), axis=1)
+                df_calc['Tổng giá trị HĐ'] = (df_calc['Giá HĐ'] * df_calc['Tháng HĐ']) # Gross Contract Value
+                
+                # -- Chi phí vốn theo khách (COGS): (Giá HĐ * Tháng Khách)
+                df_calc['Tháng Thuê'] = df_calc.apply(lambda r: get_months(r['Ngày in'], r['Ngày out']), axis=1)
+                df_calc['Chi phí vốn (theo khách)'] = (df_calc['Giá HĐ'] * df_calc['Tháng Thuê'])
+                
+                # -- Tổng chi phí Sale
+                df_calc['Tổng Chi Phí Sale'] = df_calc['SALE THẢO'] + df_calc['SALE NGA'] + df_calc['SALE LINH']
+                
+                # -- Doanh thu Gộp (Gross Revenue from Guest)
+                df_calc['Doanh thu cho thuê'] = (df_calc['Giá'] * df_calc['Tháng Thuê'])
+
+                # -- Lợi Nhuận Ròng (Net Profit) = Rev - COGS - Sales - HH
+                df_calc['Lợi nhuận ròng'] = df_calc['Doanh thu cho thuê'] - df_calc['Chi phí vốn (theo khách)'] - df_calc['Tổng Chi Phí Sale'] - df_calc['Công ty'] - df_calc['Cá Nhân']
+
+                # 3. Tạo cột Ghi chú với CẢNH BÁO THÔNG MINH
                 def make_smart_note(row, profit, cogs):
                     def d(x): 
                         if pd.isna(x): return "?"
                         try: return x.strftime('%d/%m/%y')
                         except: return str(x)
+                    
                     k = d(row.get('Ngày ký')); h = d(row.get('Ngày hết HĐ'))
                     i = d(row.get('Ngày in')); o = d(row.get('Ngày out'))
+                    
                     base_note = []
                     if k != "?" or h != "?": base_note.append(f"HĐ: {k}-{h}")
                     if i != "?" or o != "?": base_note.append(f"Khách: {i}-{o}")
+                    
+                    # --- PHẦN GIẢI THÍCH SỐ ÂM ---
                     warnings = []
                     if cogs == 0 and profit == 0: warnings.append("⚠️ Chưa có ngày tháng")
                     elif profit < 0: 
                         if row.get('Tháng Thuê', 0) == 0: warnings.append("⚠️ Lỗi ngày khách")
                         else: warnings.append("📉 Lỗ vốn (Thu < Chi)")
+                    
                     full_note = " | ".join(base_note)
-                    if warnings: full_note += " || " + " ".join(warnings)
+                    if warnings:
+                        full_note += " || " + " ".join(warnings)
+                    
                     return full_note
 
-                # Tính toán
-                df_calc['Tháng HĐ'] = df_calc.apply(lambda r: get_months(r['Ngày ký'], r['Ngày hết HĐ']), axis=1)
-                df_calc['Tổng giá trị HĐ'] = (df_calc['Giá HĐ'] * df_calc['Tháng HĐ'])
-                
-                df_calc['Tháng Thuê'] = df_calc.apply(lambda r: get_months(r['Ngày in'], r['Ngày out']), axis=1)
-                df_calc['Chi phí vốn (theo khách)'] = (df_calc['Giá HĐ'] * df_calc['Tháng Thuê'])
-                
-                # --- CỘT MỚI: DOANH THU CHO THUÊ (GỘP) ---
-                df_calc['Doanh thu cho thuê'] = (df_calc['Giá'] * df_calc['Tháng Thuê'])
-                
-                df_calc['Tổng Chi Phí Sale'] = df_calc['SALE THẢO'] + df_calc['SALE NGA'] + df_calc['SALE LINH']
-                
-                # Lợi Nhuận Ròng = Doanh thu - Vốn - Sale - HH
-                df_calc['Lợi nhuận ròng'] = df_calc['Doanh thu cho thuê'] - df_calc['Chi phí vốn (theo khách)'] - df_calc['Tổng Chi Phí Sale'] - df_calc['Công ty'] - df_calc['Cá Nhân']
-
                 df_calc["Ghi chú"] = df_calc.apply(
-                    lambda r: make_smart_note(r, r['Lợi nhuận ròng'], r['Chi phí vốn (theo khách)']), axis=1
+                    lambda r: make_smart_note(r, r['Lợi nhuận ròng'], r['Chi phí vốn (theo khách)']), 
+                    axis=1
                 )
 
-                # Chọn cột (Đã thêm Doanh thu cho thuê)
+                # 4. Chọn và sắp xếp cột (Đưa Ghi chú xuống cuối)
                 cols_final = [
                     "Toà", "Mã căn", 
                     "Tổng giá trị HĐ", "Chi phí vốn (theo khách)", 
@@ -678,22 +696,32 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                     "Lợi nhuận ròng", "Ghi chú" 
                 ]
                 
-                if "Mã căn" in df_calc.columns: df_calc = df_calc.sort_values(by=["Toà", "Mã căn"])
+                if "Mã căn" in df_calc.columns:
+                     df_calc = df_calc.sort_values(by=["Toà", "Mã căn"])
+                
                 df_show_final = df_calc[cols_final].copy()
                 
+                # 5. Dòng tổng cộng
                 total_row = pd.DataFrame(df_show_final.sum(numeric_only=True)).T
-                total_row["Toà"] = "TỔNG CỘNG"; total_row = total_row.fillna("")
+                total_row["Toà"] = "TỔNG CỘNG"
+                total_row = total_row.fillna("")
+                
                 df_result = pd.concat([df_show_final, total_row], ignore_index=True)
                 
+                # 6. Tô màu (Highlight) cho Lợi Nhuận
                 def highlight_profit(val):
                     if isinstance(val, (int, float)):
                         if val < 0: return 'color: red; font-weight: bold'
                         if val > 0: return 'color: green; font-weight: bold'
                     return ''
 
+                # 7. Định dạng số tiền
                 num_cols = ["Tổng giá trị HĐ", "Chi phí vốn (theo khách)", "Doanh thu cho thuê", "Tổng Chi Phí Sale", "Công ty", "Cá Nhân", "Lợi nhuận ròng"]
+                
+                # Copy ra bản để hiển thị
                 df_display = df_result.copy()
                 
+                # Hiển thị
                 st.dataframe(
                     df_display.style.applymap(highlight_profit, subset=["Lợi nhuận ròng"]).format(
                         "{:,.0f}", subset=pd.IndexSlice[0:len(df_display)-1, num_cols]
@@ -701,85 +729,94 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                     use_container_width=True,
                     column_config={
                         "Ghi chú": st.column_config.TextColumn(width="large"),
+                        "Tổng giá trị HĐ": st.column_config.NumberColumn(help="Giá HĐ x Tổng tháng HĐ"),
                         "Chi phí vốn (theo khách)": st.column_config.NumberColumn(help="Giá HĐ x Tháng khách ở"),
-                        "Doanh thu cho thuê": st.column_config.NumberColumn(help="Giá Thuê x Tháng khách ở")
+                        "Doanh thu cho thuê": st.column_config.NumberColumn(help="Giá Thuê x Tháng khách ở"),
+                        "Lợi nhuận ròng": st.column_config.NumberColumn(help="Doanh thu khách - Giá vốn - Chi phí")
                     }
                 )
             else:
                 st.info("Chưa có dữ liệu.")
 
-        # --- TAB 8: QUẢN LÝ DÒNG TIỀN (TAB MỚI HOÀN TOÀN) ---
+        # --- TAB 8: QUẢN LÝ DÒNG TIỀN (CHI TIẾT + GHI CHÚ) ---
         with tabs[7]:
-            st.subheader("💸 Quản Lý Dòng Tiền (Cash Flow)")
-            st.write("Theo dõi dòng tiền Thực Thu - Thực Chi (Không tính lãi lỗ theo thời gian)")
+            st.subheader("💸 Quản Lý Dòng Tiền (Thực Thu - Thực Chi)")
             
             if not df_main.empty:
-                # 1. Tính toán Dòng tiền từ Hợp Đồng (Contracts)
                 df_cf = df_main.copy()
                 
-                # Thực thu từ khách
-                df_cf['Thực thu'] = df_cf['KH thanh toán'] + df_cf['KH cọc']
+                # 1. Tính toán chi tiết THỰC THU
+                df_cf['Thu: Thanh toán'] = df_cf['KH thanh toán']
+                df_cf['Thu: Cọc'] = df_cf['KH cọc']
+                df_cf['TỔNG THU'] = df_cf['Thu: Thanh toán'] + df_cf['Thu: Cọc']
                 
-                # Thực chi cho HĐ và Sale
-                df_cf['Chi HĐ & Sale'] = df_cf['TT cho chủ nhà'] + df_cf['Cọc cho chủ nhà'] + \
-                                         df_cf['SALE THẢO'] + df_cf['SALE NGA'] + df_cf['SALE LINH'] + \
+                # 2. Tính toán chi tiết THỰC CHI
+                df_cf['Chi: Chủ nhà'] = df_cf['TT cho chủ nhà'] + df_cf['Cọc cho chủ nhà']
+                df_cf['Chi: Hoa hồng'] = df_cf['SALE THẢO'] + df_cf['SALE NGA'] + df_cf['SALE LINH'] + \
                                          df_cf['Công ty'] + df_cf['Cá Nhân']
                 
-                # 2. Tính toán Chi phí nội bộ (Operating Costs) từ df_cp
-                # Gom nhóm theo Mã căn
+                # Merge Chi phí vận hành (từ tab Chi Phí Nội Bộ)
                 df_op_cost = pd.DataFrame()
                 if not df_cp.empty:
                     df_op_cost = df_cp.groupby("Mã căn")["Tiền"].sum().reset_index()
-                    df_op_cost.columns = ["Mã căn", "Chi phí nội bộ"]
+                    df_op_cost.columns = ["Mã căn", "Chi: Vận hành"]
                 
-                # 3. Gộp lại
                 df_final_cf = pd.merge(df_cf, df_op_cost, on="Mã căn", how="left").fillna(0)
                 
-                # Tổng thực chi = Chi HĐ & Sale + Chi phí nội bộ
-                df_final_cf['Thực chi'] = df_final_cf['Chi HĐ & Sale'] + df_final_cf['Chi phí nội bộ']
+                df_final_cf['TỔNG CHI'] = df_final_cf['Chi: Chủ nhà'] + df_final_cf['Chi: Hoa hồng'] + df_final_cf['Chi: Vận hành']
                 
-                # Dòng tiền ròng
-                df_final_cf['Dòng tiền ròng'] = df_final_cf['Thực thu'] - df_final_cf['Thực chi']
+                # 3. Dòng tiền ròng
+                df_final_cf['DÒNG TIỀN RÒNG'] = df_final_cf['TỔNG THU'] - df_final_cf['TỔNG CHI']
                 
-                # 4. Hiển thị Tổng quan (Metrics)
-                total_in = df_final_cf['Thực thu'].sum()
-                total_out = df_final_cf['Thực chi'].sum()
-                net_cf = total_in - total_out
+                # 4. Tạo Ghi chú giải thích Dòng tiền ÂM
+                def explain_cf(row):
+                    net = row['DÒNG TIỀN RÒNG']
+                    if net >= 0: return "✅ Dương"
+                    
+                    reasons = []
+                    # Logic suy luận
+                    if row['TỔNG THU'] == 0: reasons.append("⚠️ Chưa thu tiền khách")
+                    elif row['Chi: Chủ nhà'] > 0 and row['TỔNG THU'] < row['Chi: Chủ nhà']: reasons.append("⚠️ Đã trả chủ nhà > Thu khách")
+                    
+                    if row['Chi: Vận hành'] > 500000: # Ngưỡng ví dụ
+                        reasons.append(f"⚠️ Chi vận hành cao ({fmt_vnd(row['Chi: Vận hành'])})")
+                        
+                    return "; ".join(reasons)
+
+                df_final_cf['Ghi chú'] = df_final_cf.apply(explain_cf, axis=1)
+
+                # 5. Hiển thị
+                cols_cf_show = [
+                    "Toà", "Mã căn", 
+                    "Thu: Thanh toán", "Thu: Cọc", "TỔNG THU",
+                    "Chi: Chủ nhà", "Chi: Hoa hồng", "Chi: Vận hành", "TỔNG CHI",
+                    "DÒNG TIỀN RÒNG", "Ghi chú"
+                ]
                 
-                c_m1, c_m2, c_m3 = st.columns(3)
-                c_m1.metric("💰 Tổng Tiền Vào", fmt_vnd(total_in))
-                c_m2.metric("💸 Tổng Tiền Ra", fmt_vnd(total_out))
-                c_m3.metric("💎 Dòng Tiền Ròng", fmt_vnd(net_cf), delta_color="normal")
-                
-                st.divider()
-                
-                # 5. Bảng chi tiết
-                cols_cf_show = ["Toà", "Mã căn", "Thực thu", "Thực chi", "Chi phí nội bộ", "Dòng tiền ròng"]
-                
-                if "Mã căn" in df_final_cf.columns:
-                     df_final_cf = df_final_cf.sort_values(by=["Toà", "Mã căn"])
+                if "Mã căn" in df_final_cf.columns: df_final_cf = df_final_cf.sort_values(by=["Toà", "Mã căn"])
                 
                 df_cf_display = df_final_cf[cols_cf_show].copy()
                 
-                # Dòng tổng
                 total_row_cf = pd.DataFrame(df_cf_display.sum(numeric_only=True)).T
                 total_row_cf["Toà"] = "TỔNG CỘNG"; total_row_cf = total_row_cf.fillna("")
                 df_cf_result = pd.concat([df_cf_display, total_row_cf], ignore_index=True)
                 
-                # Định dạng
                 def highlight_cf(val):
                     if isinstance(val, (int, float)):
                         if val < 0: return 'color: red; font-weight: bold'
                         if val > 0: return 'color: green; font-weight: bold'
                     return ''
                 
-                num_cols_cf = ["Thực thu", "Thực chi", "Chi phí nội bộ", "Dòng tiền ròng"]
+                num_cols_cf = ["Thu: Thanh toán", "Thu: Cọc", "TỔNG THU", "Chi: Chủ nhà", "Chi: Hoa hồng", "Chi: Vận hành", "TỔNG CHI", "DÒNG TIỀN RÒNG"]
                 
                 st.dataframe(
-                    df_cf_result.style.applymap(highlight_cf, subset=["Dòng tiền ròng"]).format(
+                    df_cf_result.style.applymap(highlight_cf, subset=["DÒNG TIỀN RÒNG"]).format(
                         "{:,.0f}", subset=pd.IndexSlice[0:len(df_cf_result)-1, num_cols_cf]
                     ),
-                    use_container_width=True
+                    use_container_width=True,
+                    column_config={
+                        "Ghi chú": st.column_config.TextColumn(width="large")
+                    }
                 )
 
             else:
