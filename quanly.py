@@ -224,7 +224,7 @@ if uploaded_key is not None:
             "📋 Tổng Hợp Dữ Liệu",      
             "🏠 Cảnh Báo Phòng",        
             "💰 Quản Lý Chi Phí",      
-            "💰 Doanh Thu"
+            "📊 Tổng Hợp Chi Phí" # Tab mới đổi tên
         ])
 
         # --- TAB 1: NHẬP LIỆU THỦ CÔNG ---
@@ -539,7 +539,7 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                             st.code(zalo_msg_out, language=None)
 
 
-        # --- TAB 6: QUẢN LÝ CHI PHÍ (GHI CHÚ TỰ ĐỘNG NGÀY THÁNG) ---
+        # --- TAB 6: QUẢN LÝ CHI PHÍ ---
         with tabs[5]:
             st.subheader("💰 Quản Lý Chi Phí & Doanh Thu Chi Tiết")
             if not df_main.empty:
@@ -551,7 +551,6 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                     "Công ty", "Cá Nhân"
                 ]
                 
-                # --- THÊM TẠM THỜI CÁC CỘT NGÀY VÀO ĐỂ TÍNH TOÁN GHI CHÚ ---
                 cols_with_dates = cols_to_show + ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]
                 existing_cols = [c for c in cols_with_dates if c in df_main.columns]
                 
@@ -579,22 +578,17 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                         try: return x.strftime('%d/%m/%y')
                         except: return str(x)
                     
-                    # Lấy dữ liệu ngày, nếu ko có thì để trống
                     k = d(row.get('Ngày ký'))
                     h = d(row.get('Ngày hết HĐ'))
                     i = d(row.get('Ngày in'))
                     o = d(row.get('Ngày out'))
                     
-                    # Chỉ hiện nếu có dữ liệu
                     note_parts = []
                     if k != "?" or h != "?": note_parts.append(f"HĐ: {k}-{h}")
                     if i != "?" or o != "?": note_parts.append(f"Khách: {i}-{o}")
-                    
                     return " | ".join(note_parts)
 
                 df_view["Ghi chú"] = df_view.apply(make_note, axis=1)
-
-                # --- SAU KHI TẠO GHI CHÚ, XÓA CÁC CỘT NGÀY ĐI CHO GỌN ---
                 df_view = df_view.drop(columns=["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"], errors='ignore')
 
                 numeric_cols = [
@@ -624,55 +618,66 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
             else:
                 st.info("Chưa có dữ liệu để tổng hợp.")
 
-        # --- TAB 7: DOANH THU ---
+        # --- TAB 7: TỔNG HỢP CHI PHÍ (MỚI) ---
         with tabs[6]:
-            st.subheader("💰 Báo Cáo Doanh Thu & Lợi Nhuận")
-            
-            c_filter1, c_filter2 = st.columns(2)
-            sel_month = c_filter1.selectbox("Chọn Tháng", range(1, 13), index=date.today().month - 1)
-            sel_year = c_filter2.number_input("Chọn Năm", min_value=2020, max_value=2030, value=date.today().year)
-            
-            st.divider()
+            st.subheader("📊 Tổng Hợp Chi Phí & Lợi Nhuận")
             
             if not df_main.empty:
-                start_date = pd.Timestamp(year=sel_year, month=sel_month, day=1)
-                if sel_month == 12:
-                    end_date = pd.Timestamp(year=sel_year+1, month=1, day=1)
-                else:
-                    end_date = pd.Timestamp(year=sel_year, month=sel_month+1, day=1)
+                # 1. Chuẩn bị dữ liệu tính toán
+                df_calc = df_main.copy()
                 
-                mask_hd = (df_main['Ngày in'] < end_date) & (df_main['Ngày out'] >= start_date)
-                df_filtered_hd = df_main[mask_hd].copy()
-                
-                if not df_cp.empty and 'Ngày' in df_cp.columns:
-                    mask_cp = (df_cp['Ngày'] >= start_date) & (df_cp['Ngày'] < end_date)
-                    df_filtered_cp = df_cp[mask_cp].copy()
-                else:
-                    df_filtered_cp = pd.DataFrame(columns=["Mã căn", "Tiền"])
+                # Hàm tính số tháng (tương đối: lấy số ngày / 30)
+                def get_months(start, end):
+                    if pd.isna(start) or pd.isna(end): return 0
+                    try:
+                        days = (end - start).days
+                        return max(0, days / 30)
+                    except: return 0
 
-                st.write(f"📊 **Kết quả kinh doanh Tháng {sel_month}/{sel_year}:**")
+                # 2. Tính toán các cột phức tạp
+                # -- Chi phí hợp đồng: (Giá HĐ * Tháng) - Thanh toán - Cọc
+                df_calc['Tháng HĐ'] = df_calc.apply(lambda r: get_months(r['Ngày ký'], r['Ngày hết HĐ']), axis=1)
+                df_calc['Chi phí hợp đồng'] = (df_calc['Giá HĐ'] * df_calc['Tháng HĐ']) - df_calc['TT cho chủ nhà'] - df_calc['Cọc cho chủ nhà']
                 
-                cp_sum = pd.DataFrame(columns=["Mã căn", "CP Nội Bộ"])
-                if not df_filtered_cp.empty:
-                     cp_sum = df_filtered_cp.groupby("Mã căn")["Tiền"].sum().reset_index(); cp_sum.columns = ["Mã căn", "CP Nội Bộ"]
+                # -- Chi phí phòng cho thuê: (Giá thuê * Tháng) - Khách trả - Khách cọc
+                df_calc['Tháng Thuê'] = df_calc.apply(lambda r: get_months(r['Ngày in'], r['Ngày out']), axis=1)
+                df_calc['Chi phí phòng cho thuê'] = (df_calc['Giá'] * df_calc['Tháng Thuê']) - df_calc['KH thanh toán'] - df_calc['KH cọc']
                 
-                final = pd.merge(df_filtered_hd, cp_sum, on="Mã căn", how="left").fillna(0)
-                final["Lợi Nhuận Net"] = final["Giá"] - final["Giá HĐ"] - final[["SALE THẢO", "SALE NGA", "SALE LINH"]].sum(axis=1) - final["CP Nội Bộ"] - final["Công ty"] - final["Cá Nhân"]
+                # -- Chi phí Sale
+                df_calc['Chi phí các sale'] = df_calc['SALE THẢO'] + df_calc['SALE NGA'] + df_calc['SALE LINH']
                 
-                grp = final.groupby("Toà")[["Giá", "Giá HĐ", "CP Nội Bộ", "Lợi Nhuận Net"]].sum().reset_index()
-                
-                if not grp.empty:
-                    total = pd.DataFrame(grp.sum(numeric_only=True)).T; total["Toà"] = "TỔNG CỘNG"
-                    df_final_revenue = pd.concat([grp, total], ignore_index=True)
-                    
-                    rev_numeric_cols = ["Giá", "Giá HĐ", "CP Nội Bộ", "Lợi Nhuận Net"]
-                    for col in rev_numeric_cols:
-                        if col in df_final_revenue.columns:
-                            df_final_revenue[col] = df_final_revenue[col].apply(fmt_vnd)
+                # -- Doanh thu cho thuê (Final)
+                df_calc['Doanh thu cho thuê'] = df_calc['Chi phí phòng cho thuê'] - df_calc['Chi phí hợp đồng'] - df_calc['Chi phí các sale'] - df_calc['Công ty'] - df_calc['Cá Nhân']
 
-                    st.dataframe(df_final_revenue, use_container_width=True)
-                else:
-                    st.warning("Không có dữ liệu trong tháng này.")
+                # 3. Chọn cột để hiển thị
+                cols_final = [
+                    "Toà", "Mã căn", 
+                    "Chi phí hợp đồng", "Chi phí phòng cho thuê", 
+                    "Chi phí các sale", "Công ty", "Cá Nhân", 
+                    "Doanh thu cho thuê"
+                ]
+                
+                # 4. Sắp xếp và hiển thị
+                if "Mã căn" in df_calc.columns:
+                     df_calc = df_calc.sort_values(by=["Toà", "Mã căn"])
+                
+                df_show_final = df_calc[cols_final].copy()
+                
+                # 5. Dòng tổng cộng
+                total_row = pd.DataFrame(df_show_final.sum(numeric_only=True)).T
+                total_row["Toà"] = "TỔNG CỘNG"
+                total_row = total_row.fillna("")
+                
+                df_result = pd.concat([df_show_final, total_row], ignore_index=True)
+                
+                # 6. Định dạng tiền tệ
+                num_cols = ["Chi phí hợp đồng", "Chi phí phòng cho thuê", "Chi phí các sale", "Công ty", "Cá Nhân", "Doanh thu cho thuê"]
+                for c in num_cols:
+                    df_result[c] = df_result[c].apply(fmt_vnd)
+                
+                st.dataframe(df_result, use_container_width=True)
+            else:
+                st.info("Chưa có dữ liệu.")
 
 else:
     st.warning("👈 Vui lòng tải file **JSON Chìa Khóa** từ Google lên đây.")
