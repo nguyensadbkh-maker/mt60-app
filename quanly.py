@@ -99,11 +99,13 @@ if uploaded_key is not None:
             try: return float(val)
             except: return 0
 
-        # --- HÀM ĐỊNH DẠNG TIỀN VIỆT NAM (DÙNG CHO HIỂN THỊ) ---
+        # --- HÀM ĐỊNH DẠNG TIỀN VIỆT NAM ---
         def fmt_vnd(val):
             try:
                 if pd.isna(val) or val == "": return "-"
                 val = float(val)
+                if val < 0:
+                    return "({:,.0f})".format(abs(val)).replace(",", ".") # Số âm trong ngoặc
                 return "{:,.0f}".format(val).replace(",", ".")
             except:
                 return str(val)
@@ -551,6 +553,7 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                     "Công ty", "Cá Nhân"
                 ]
                 
+                # --- THÊM TẠM THỜI CÁC CỘT NGÀY VÀO ĐỂ TÍNH TOÁN GHI CHÚ ---
                 cols_with_dates = cols_to_show + ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]
                 existing_cols = [c for c in cols_with_dates if c in df_main.columns]
                 
@@ -577,8 +580,12 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                         if pd.isna(x): return "?"
                         try: return x.strftime('%d/%m/%y')
                         except: return str(x)
-                    k = d(row.get('Ngày ký')); h = d(row.get('Ngày hết HĐ'))
-                    i = d(row.get('Ngày in')); o = d(row.get('Ngày out'))
+                    
+                    k = d(row.get('Ngày ký'))
+                    h = d(row.get('Ngày hết HĐ'))
+                    i = d(row.get('Ngày in'))
+                    o = d(row.get('Ngày out'))
+                    
                     note_parts = []
                     if k != "?" or h != "?": note_parts.append(f"HĐ: {k}-{h}")
                     if i != "?" or o != "?": note_parts.append(f"Khách: {i}-{o}")
@@ -614,7 +621,7 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
             else:
                 st.info("Chưa có dữ liệu để tổng hợp.")
 
-        # --- TAB 7: TỔNG HỢP CHI PHÍ (MỚI) ---
+        # --- TAB 7: TỔNG HỢP CHI PHÍ (MỚI - ĐÃ CẬP NHẬT GHI CHÚ VÀ GIẢI THÍCH ÂM) ---
         with tabs[6]:
             st.subheader("📊 Tổng Hợp Chi Phí & Lợi Nhuận")
             
@@ -622,6 +629,7 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                 # 1. Chuẩn bị dữ liệu tính toán
                 df_calc = df_main.copy()
                 
+                # Hàm tính số tháng (tương đối: lấy số ngày / 30)
                 def get_months(start, end):
                     if pd.isna(start) or pd.isna(end): return 0
                     try:
@@ -629,9 +637,26 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                         return max(0, days / 30)
                     except: return 0
                     
-                # 2. Tạo cột Ghi chú với CẢNH BÁO THÔNG MINH
-                def make_smart_note(row, cp_hd, cp_thue, dt):
-                    # Lấy thông tin ngày tháng cơ bản
+                # 2. Tính toán các cột phức tạp
+                # -- Chi phí hợp đồng: (Giá HĐ * Tháng)
+                df_calc['Tháng HĐ'] = df_calc.apply(lambda r: get_months(r['Ngày ký'], r['Ngày hết HĐ']), axis=1)
+                df_calc['Tổng giá trị HĐ'] = (df_calc['Giá HĐ'] * df_calc['Tháng HĐ']) # Gross Contract Value
+                
+                # -- Chi phí vốn theo khách (COGS): (Giá HĐ * Tháng Khách)
+                df_calc['Tháng Thuê'] = df_calc.apply(lambda r: get_months(r['Ngày in'], r['Ngày out']), axis=1)
+                df_calc['Chi phí vốn (theo khách)'] = (df_calc['Giá HĐ'] * df_calc['Tháng Thuê'])
+                
+                # -- Tổng chi phí Sale
+                df_calc['Tổng Chi Phí Sale'] = df_calc['SALE THẢO'] + df_calc['SALE NGA'] + df_calc['SALE LINH']
+                
+                # -- Doanh thu Gộp (Gross Revenue from Guest)
+                df_calc['Doanh thu gộp'] = (df_calc['Giá'] * df_calc['Tháng Thuê'])
+
+                # -- Lợi Nhuận Ròng (Net Profit) = Rev - COGS - Sales - HH
+                df_calc['Lợi nhuận ròng'] = df_calc['Doanh thu gộp'] - df_calc['Chi phí vốn (theo khách)'] - df_calc['Tổng Chi Phí Sale'] - df_calc['Công ty'] - df_calc['Cá Nhân']
+
+                # 3. Tạo cột Ghi chú với CẢNH BÁO THÔNG MINH
+                def make_smart_note(row, profit, cogs):
                     def d(x): 
                         if pd.isna(x): return "?"
                         try: return x.strftime('%d/%m/%y')
@@ -646,9 +671,10 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                     
                     # --- PHẦN GIẢI THÍCH SỐ ÂM ---
                     warnings = []
-                    if cp_hd < 0: warnings.append("⚠️ Âm tiền nhà (Kiểm tra ngày HĐ/Tiền đã trả)")
-                    if cp_thue < 0: warnings.append("⚠️ Âm tiền thuê (Kiểm tra ngày Khách/Tiền khách trả)")
-                    if dt < 0: warnings.append("📉 Lỗ (Thu không đủ bù Chi)")
+                    if cogs == 0 and profit == 0: warnings.append("⚠️ Chưa có ngày tháng")
+                    elif profit < 0: 
+                        if row.get('Tháng Thuê', 0) == 0: warnings.append("⚠️ Lỗi ngày khách")
+                        else: warnings.append("📉 Lỗ vốn (Thu < Chi)")
                     
                     full_note = " | ".join(base_note)
                     if warnings:
@@ -656,28 +682,17 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                     
                     return full_note
 
-                # 3. Tính toán các cột
-                df_calc['Tháng HĐ'] = df_calc.apply(lambda r: get_months(r['Ngày ký'], r['Ngày hết HĐ']), axis=1)
-                df_calc['Chi phí hợp đồng'] = (df_calc['Giá HĐ'] * df_calc['Tháng HĐ']) - df_calc['TT cho chủ nhà'] - df_calc['Cọc cho chủ nhà']
-                
-                df_calc['Tháng Thuê'] = df_calc.apply(lambda r: get_months(r['Ngày in'], r['Ngày out']), axis=1)
-                df_calc['Chi phí phòng cho thuê'] = (df_calc['Giá'] * df_calc['Tháng Thuê']) - df_calc['KH thanh toán'] - df_calc['KH cọc']
-                
-                df_calc['Chi phí các sale'] = df_calc['SALE THẢO'] + df_calc['SALE NGA'] + df_calc['SALE LINH']
-                df_calc['Doanh thu cho thuê'] = df_calc['Chi phí phòng cho thuê'] - df_calc['Chi phí hợp đồng'] - df_calc['Chi phí các sale'] - df_calc['Công ty'] - df_calc['Cá Nhân']
-
-                # 4. Áp dụng hàm tạo Ghi chú thông minh
                 df_calc["Ghi chú"] = df_calc.apply(
-                    lambda r: make_smart_note(r, r['Chi phí hợp đồng'], r['Chi phí phòng cho thuê'], r['Doanh thu cho thuê']), 
+                    lambda r: make_smart_note(r, r['Lợi nhuận ròng'], r['Chi phí vốn (theo khách)']), 
                     axis=1
                 )
 
-                # 5. Chọn và sắp xếp cột (Đưa Ghi chú xuống cuối)
+                # 4. Chọn và sắp xếp cột (Đưa Ghi chú xuống cuối)
                 cols_final = [
                     "Toà", "Mã căn", 
-                    "Chi phí hợp đồng", "Chi phí phòng cho thuê", 
-                    "Chi phí các sale", "Công ty", "Cá Nhân", 
-                    "Doanh thu cho thuê", "Ghi chú" 
+                    "Tổng giá trị HĐ", "Chi phí vốn (theo khách)", 
+                    "Tổng Chi Phí Sale", "Công ty", "Cá Nhân", 
+                    "Lợi nhuận ròng", "Ghi chú" 
                 ]
                 
                 if "Mã căn" in df_calc.columns:
@@ -685,36 +700,37 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                 
                 df_show_final = df_calc[cols_final].copy()
                 
-                # 6. Dòng tổng cộng
+                # 5. Dòng tổng cộng
                 total_row = pd.DataFrame(df_show_final.sum(numeric_only=True)).T
                 total_row["Toà"] = "TỔNG CỘNG"
                 total_row = total_row.fillna("")
                 
                 df_result = pd.concat([df_show_final, total_row], ignore_index=True)
                 
-                # 7. Tô màu (Highlight) cho các số Âm
-                # Định nghĩa hàm tô màu
-                def highlight_negative(val):
-                    color = 'red' if isinstance(val, (int, float)) and val < 0 else 'black'
-                    if isinstance(val, (int, float)) and val > 0: color = 'green'
-                    return f'color: {color}'
+                # 6. Tô màu (Highlight) cho Lợi Nhuận
+                def highlight_profit(val):
+                    if isinstance(val, (int, float)):
+                        if val < 0: return 'color: red; font-weight: bold'
+                        if val > 0: return 'color: green; font-weight: bold'
+                    return ''
 
-                # 8. Định dạng số tiền (Chuyển sang chuỗi để hiển thị đẹp)
-                # Lưu ý: Khi chuyển sang chuỗi thì không sort/tính toán tiếp được trên bảng hiển thị
-                num_cols = ["Chi phí hợp đồng", "Chi phí phòng cho thuê", "Chi phí các sale", "Công ty", "Cá Nhân", "Doanh thu cho thuê"]
+                # 7. Định dạng số tiền
+                num_cols = ["Tổng giá trị HĐ", "Chi phí vốn (theo khách)", "Tổng Chi Phí Sale", "Công ty", "Cá Nhân", "Lợi nhuận ròng"]
                 
-                # Copy ra bản để hiển thị (để giữ bản gốc là số nếu cần tính toán ngầm)
+                # Copy ra bản để hiển thị
                 df_display = df_result.copy()
                 
-                # Áp dụng Style tô màu (Chỉ hoạt động tốt trên DataFrame thuần, nhưng st.dataframe hỗ trợ limited style)
-                # Streamlit hiện tại hỗ trợ style map tốt nhất
+                # Hiển thị
                 st.dataframe(
-                    df_display.style.applymap(highlight_negative, subset=num_cols).format(
-                        "{:,.0f}", subset=pd.IndexSlice[0:len(df_display)-1, num_cols] # Format số có dấu phẩy, trừ dòng tổng nếu cần
+                    df_display.style.applymap(highlight_profit, subset=["Lợi nhuận ròng"]).format(
+                        "{:,.0f}", subset=pd.IndexSlice[0:len(df_display)-1, num_cols]
                     ),
                     use_container_width=True,
                     column_config={
-                        "Ghi chú": st.column_config.TextColumn(width="large")
+                        "Ghi chú": st.column_config.TextColumn(width="large"),
+                        "Tổng giá trị HĐ": st.column_config.NumberColumn(help="Giá HĐ x Tổng tháng HĐ"),
+                        "Chi phí vốn (theo khách)": st.column_config.NumberColumn(help="Giá HĐ x Tháng khách ở"),
+                        "Lợi nhuận ròng": st.column_config.NumberColumn(help="Doanh thu khách - Giá vốn - Chi phí")
                     }
                 )
             else:
