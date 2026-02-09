@@ -104,6 +104,8 @@ if uploaded_key is not None:
             try:
                 if pd.isna(val) or val == "": return "-"
                 val = float(val)
+                if val < 0:
+                    return "({:,.0f})".format(abs(val)).replace(",", ".") # Số âm để trong ngoặc
                 return "{:,.0f}".format(val).replace(",", ".")
             except:
                 return str(val)
@@ -224,7 +226,7 @@ if uploaded_key is not None:
             "📋 Tổng Hợp Dữ Liệu",      
             "🏠 Cảnh Báo Phòng",        
             "💰 Quản Lý Chi Phí",      
-            "📊 Tổng Hợp Chi Phí" # Tab mới đổi tên
+            "📊 Tổng Hợp Chi Phí"
         ])
 
         # --- TAB 1: NHẬP LIỆU THỦ CÔNG ---
@@ -539,7 +541,7 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                             st.code(zalo_msg_out, language=None)
 
 
-        # --- TAB 6: QUẢN LÝ CHI PHÍ ---
+        # --- TAB 6: QUẢN LÝ CHI PHÍ (GHI CHÚ TỰ ĐỘNG NGÀY THÁNG) ---
         with tabs[5]:
             st.subheader("💰 Quản Lý Chi Phí & Doanh Thu Chi Tiết")
             if not df_main.empty:
@@ -551,6 +553,7 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                     "Công ty", "Cá Nhân"
                 ]
                 
+                # --- THÊM TẠM THỜI CÁC CỘT NGÀY VÀO ĐỂ TÍNH TOÁN GHI CHÚ ---
                 cols_with_dates = cols_to_show + ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]
                 existing_cols = [c for c in cols_with_dates if c in df_main.columns]
                 
@@ -633,6 +636,21 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                         days = (end - start).days
                         return max(0, days / 30)
                     except: return 0
+                    
+                # --- TÁI SỬ DỤNG HÀM TẠO GHI CHÚ ---
+                def make_note_v2(row):
+                    def d(x): 
+                        if pd.isna(x): return "?"
+                        try: return x.strftime('%d/%m/%y')
+                        except: return str(x)
+                    k = d(row.get('Ngày ký')); h = d(row.get('Ngày hết HĐ'))
+                    i = d(row.get('Ngày in')); o = d(row.get('Ngày out'))
+                    note_parts = []
+                    if k != "?" or h != "?": note_parts.append(f"HĐ: {k}-{h}")
+                    if i != "?" or o != "?": note_parts.append(f"Khách: {i}-{o}")
+                    return " | ".join(note_parts)
+
+                df_calc["Ghi chú"] = df_calc.apply(make_note_v2, axis=1)
 
                 # 2. Tính toán các cột phức tạp
                 # -- Chi phí hợp đồng: (Giá HĐ * Tháng) - Thanh toán - Cọc
@@ -652,6 +670,7 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                 # 3. Chọn cột để hiển thị
                 cols_final = [
                     "Toà", "Mã căn", 
+                    "Ghi chú", # Thêm cột ghi chú
                     "Chi phí hợp đồng", "Chi phí phòng cho thuê", 
                     "Chi phí các sale", "Công ty", "Cá Nhân", 
                     "Doanh thu cho thuê"
@@ -675,7 +694,13 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                 for c in num_cols:
                     df_result[c] = df_result[c].apply(fmt_vnd)
                 
-                st.dataframe(df_result, use_container_width=True)
+                st.dataframe(
+                    df_result, 
+                    use_container_width=True,
+                    column_config={
+                        "Ghi chú": st.column_config.TextColumn(width="medium", help="Ngày HĐ và Ngày Khách")
+                    }
+                )
             else:
                 st.info("Chưa có dữ liệu.")
 
