@@ -539,7 +539,7 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                             st.code(zalo_msg_out, language=None)
 
 
-        # --- TAB 6: QUẢN LÝ CHI PHÍ ---
+        # --- TAB 6: QUẢN LÝ CHI PHÍ (GHI CHÚ TỰ ĐỘNG NGÀY THÁNG) ---
         with tabs[5]:
             st.subheader("💰 Quản Lý Chi Phí & Doanh Thu Chi Tiết")
             if not df_main.empty:
@@ -550,7 +550,11 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                     "SALE THẢO", "SALE NGA", "SALE LINH",
                     "Công ty", "Cá Nhân"
                 ]
-                existing_cols = [c for c in cols_to_show if c in df_main.columns]
+                
+                # --- THÊM TẠM THỜI CÁC CỘT NGÀY VÀO ĐỂ TÍNH TOÁN GHI CHÚ ---
+                cols_with_dates = cols_to_show + ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]
+                existing_cols = [c for c in cols_with_dates if c in df_main.columns]
+                
                 df_view = df_main[existing_cols].copy()
 
                 df_view = df_view.rename(columns={
@@ -568,7 +572,30 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                 else:
                      df_view = df_view.sort_values(by=["Toà"])
 
-                df_view["Ghi chú"] = ""
+                # --- TẠO GHI CHÚ TỰ ĐỘNG TỪ NGÀY THÁNG ---
+                def make_note(row):
+                    def d(x): 
+                        if pd.isna(x): return "?"
+                        try: return x.strftime('%d/%m/%y')
+                        except: return str(x)
+                    
+                    # Lấy dữ liệu ngày, nếu ko có thì để trống
+                    k = d(row.get('Ngày ký'))
+                    h = d(row.get('Ngày hết HĐ'))
+                    i = d(row.get('Ngày in'))
+                    o = d(row.get('Ngày out'))
+                    
+                    # Chỉ hiện nếu có dữ liệu
+                    note_parts = []
+                    if k != "?" or h != "?": note_parts.append(f"HĐ: {k}-{h}")
+                    if i != "?" or o != "?": note_parts.append(f"Khách: {i}-{o}")
+                    
+                    return " | ".join(note_parts)
+
+                df_view["Ghi chú"] = df_view.apply(make_note, axis=1)
+
+                # --- SAU KHI TẠO GHI CHÚ, XÓA CÁC CỘT NGÀY ĐI CHO GỌN ---
+                df_view = df_view.drop(columns=["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"], errors='ignore')
 
                 numeric_cols = [
                     "Giá HĐ", "Thanh toán HĐ", "Cọc HĐ", 
@@ -587,7 +614,13 @@ Cảm ơn bạn đã ở tại {row['Tòa nhà']}!"""
                     if col in df_final_view.columns:
                         df_final_view[col] = df_final_view[col].apply(fmt_vnd)
 
-                st.dataframe(df_final_view, use_container_width=True)
+                st.dataframe(
+                    df_final_view, 
+                    use_container_width=True,
+                    column_config={
+                        "Ghi chú": st.column_config.TextColumn(width="medium", help="Thông tin ngày tháng hợp đồng")
+                    }
+                )
             else:
                 st.info("Chưa có dữ liệu để tổng hợp.")
 
