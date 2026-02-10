@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 from datetime import date, datetime, timedelta
 import os
 import json
@@ -646,7 +645,7 @@ if uploaded_key is not None:
                 st.info("Chưa có dữ liệu.")
 
         # ---------------------------------------------------------
-        # TAB 7: TỔNG HỢP CHI PHÍ (PROFIT & LOSS) - DASHBOARD
+        # TAB 7: TỔNG HỢP CHI PHÍ (PROFIT & LOSS) - KHÔNG BIỂU ĐỒ
         # ---------------------------------------------------------
         with tabs[6]:
             st.subheader("📊 Báo Cáo Lợi Nhuận (Profit & Loss)")
@@ -691,21 +690,6 @@ if uploaded_key is not None:
                 c_m2.metric("📉 TỔNG CHI PHÍ & VỐN", fmt_vnd(total_cost), help="Tổng tiền trả chủ nhà + Sale + HH")
                 c_m3.metric("💎 TỔNG LỢI NHUẬN", fmt_vnd(total_net), delta=fmt_vnd(total_net), delta_color="normal" if total_net > 0 else "inverse")
                 
-                st.divider()
-
-                # 3. Biểu đồ
-                st.write("##### 📈 Biểu đồ Lợi Nhuận theo Tòa Nhà")
-                chart_data = df_calc.groupby("Toà")["Lợi nhuận ròng"].sum().reset_index()
-                fig = px.bar(
-                    chart_data, 
-                    x="Toà", 
-                    y="Lợi nhuận ròng", 
-                    text_auto='.2s',
-                    color="Lợi nhuận ròng",
-                    color_continuous_scale=["red", "yellow", "green"]
-                )
-                st.plotly_chart(fig, use_container_width=True)
-
                 st.divider()
 
                 # 4. Bảng chi tiết & Ghi chú thông minh
@@ -757,7 +741,7 @@ if uploaded_key is not None:
             else: st.info("Chưa có dữ liệu.")
 
         # ---------------------------------------------------------
-        # TAB 8: QUẢN LÝ DÒNG TIỀN (CASHFLOW)
+        # TAB 8: QUẢN LÝ DÒNG TIỀN (CASHFLOW) - KHÔNG BIỂU ĐỒ
         # ---------------------------------------------------------
         with tabs[7]:
             st.subheader("💸 Quản Lý Dòng Tiền (Thực Thu - Thực Chi)")
@@ -794,21 +778,6 @@ if uploaded_key is not None:
                 c_cf2.metric("💸 TỔNG THỰC CHI", fmt_vnd(tot_out))
                 c_cf3.metric("💎 DÒNG TIỀN RÒNG", fmt_vnd(net_cf), delta_color="normal" if net_cf > 0 else "inverse")
                 
-                st.divider()
-
-                # --- BIỂU ĐỒ ---
-                st.write("##### 📊 Biểu đồ Thu - Chi")
-                cf_chart_data = df_final_cf.groupby("Toà")[["TỔNG THU", "TỔNG CHI"]].sum().reset_index()
-                fig_cf = px.bar(
-                    cf_chart_data, 
-                    x="Toà", 
-                    y=["TỔNG THU", "TỔNG CHI"], 
-                    barmode='group', 
-                    title="So Sánh Thu - Chi Theo Tòa",
-                    labels={"value": "Số tiền", "variable": "Loại"}
-                )
-                st.plotly_chart(fig_cf, use_container_width=True)
-
                 st.divider()
 
                 # --- BẢNG ---
