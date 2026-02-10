@@ -23,14 +23,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Kiểm tra thư viện AI
 try:
     from google import genai
     AI_AVAILABLE = True
 except ImportError:
     AI_AVAILABLE = False
 
+# Tên File Google Sheet
 SHEET_NAME = "MT60_DATABASE"
 
+# Danh sách cột chuẩn cho Hợp Đồng
 COLUMNS = [
     "Tòa nhà", "Mã căn", "Toà", "Chủ nhà - sale", "Ngày ký", "Ngày hết HĐ", 
     "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Tên khách thuê", 
@@ -39,17 +42,18 @@ COLUMNS = [
     "Hết hạn khách hàng", "Ráp khách khi hết hạn"
 ]
 
+# Danh sách cột chuẩn cho Chi Phí
 COLUMNS_CP = ["Ngày", "Mã căn", "Loại", "Tiền", "Chỉ số đồng hồ"]
 
 # ==============================================================================
-# 2. GIAO DIỆN & KẾT NỐI
+# 2. KẾT NỐI DỮ LIỆU
 # ==============================================================================
 
-st.title("☁️ MT60 STUDIO - HỆ THỐNG QUẢN LÝ TOÀN DIỆN")
+st.title("☁️ MT60 STUDIO - QUẢN LÝ CHI TIẾT")
 st.markdown("---")
 
-st.sidebar.header("🔐 Đăng Nhập Hệ Thống")
-uploaded_key = st.sidebar.file_uploader("Chọn file JSON (Chìa khóa) để mở khóa", type=['json'])
+st.sidebar.header("🔐 Đăng Nhập")
+uploaded_key = st.sidebar.file_uploader("Chọn file JSON để mở khóa", type=['json'])
 
 @st.cache_resource
 def connect_google_sheet(file_obj):
@@ -68,16 +72,16 @@ def connect_google_sheet(file_obj):
         return None
 
 # ==============================================================================
-# 3. LOGIC XỬ LÝ DỮ LIỆU
+# 3. XỬ LÝ LOGIC CHÍNH
 # ==============================================================================
 
 if uploaded_key is not None:
     uploaded_key.seek(0)
-    with st.spinner("Đang kết nối đến máy chủ Google..."):
+    with st.spinner("Đang tải dữ liệu..."):
         sh = connect_google_sheet(uploaded_key)
     
     if sh:
-        st.sidebar.success("✅ Đã kết nối thành công!")
+        st.sidebar.success("✅ Đã kết nối!")
         
         # --- CÁC HÀM HỖ TRỢ ---
         def load_data(tab_name):
@@ -142,60 +146,11 @@ if uploaded_key is not None:
                 return json.loads(response.text.replace("```json", "").replace("```", "").strip())
             except: return None
 
-        # --- HÀM GỘP DỮ LIỆU & TẠO GHI CHÚ ---
-        def gop_du_lieu_phong(df_input):
-            if df_input.empty: return df_input
-            df = df_input.copy()
-            
-            # Tạo ghi chú chi tiết cho từng dòng
-            def tao_mo_ta_dong(row):
-                details = []
-                def d(x): return x.strftime('%d/%m/%y') if not pd.isna(x) else "?"
-                k, h = d(row.get('Ngày ký')), d(row.get('Ngày hết HĐ'))
-                i, o = d(row.get('Ngày in')), d(row.get('Ngày out'))
-                
-                if k != "?" or h != "?": details.append(f"HĐ({k}-{h})")
-                if row.get('Giá HĐ', 0) > 0: details.append(f"GiáHĐ:{fmt_vnd(row['Giá HĐ'])}")
-                if i != "?" or o != "?": details.append(f"Khách({i}-{o})")
-                if row.get('Giá', 0) > 0: details.append(f"GiáThuê:{fmt_vnd(row['Giá'])}")
-                
-                thu = row.get('KH thanh toán', 0) + row.get('KH cọc', 0)
-                if thu > 0: details.append(f"Thu:{fmt_vnd(thu)}")
-                
-                chi = row.get('TT cho chủ nhà', 0) + row.get('Cọc cho chủ nhà', 0)
-                if chi > 0: details.append(f"Chi:{fmt_vnd(chi)}")
-                
-                if not details: return "Trống"
-                return ", ".join(details)
-
-            df['_chi_tiet_nhap'] = df.apply(tao_mo_ta_dong, axis=1)
-
-            # Quy tắc gộp
-            agg_rules = {
-                'Ngày ký': 'min', 'Ngày hết HĐ': 'max',
-                'Ngày in': 'min', 'Ngày out': 'max',
-                'Giá HĐ': 'max', 'Giá': 'max',
-                'TT cho chủ nhà': 'sum', 'Cọc cho chủ nhà': 'sum',
-                'KH thanh toán': 'sum', 'KH cọc': 'sum',
-                'Công ty': 'sum', 'Cá Nhân': 'sum',
-                'SALE THẢO': 'sum', 'SALE NGA': 'sum', 'SALE LINH': 'sum',
-                'Tên khách thuê': 'first',
-                # Nối chuỗi ghi chú xuống dòng
-                '_chi_tiet_nhap': lambda x: '\n'.join([f"• Nhập lần {i+1}: {v}" for i, v in enumerate(x) if v != "Trống"])
-            }
-            
-            final_agg = {k: v for k, v in agg_rules.items() if k in df.columns}
-            cols_group = ['Toà', 'Mã căn']
-            if not all(col in df.columns for col in cols_group): return df
-
-            df_grouped = df.groupby(cols_group, as_index=False).agg(final_agg)
-            df_grouped = df_grouped.rename(columns={'_chi_tiet_nhap': 'Ghi chú'})
-            return df_grouped
-
-        # --- LOAD & CLEAN DATA ---
+        # --- LOAD DATA ---
         df_main = load_data("HOP_DONG")
         df_cp = load_data("CHI_PHI")
 
+        # --- CLEAN DATA ---
         if df_cp.empty:
             df_cp = pd.DataFrame(columns=COLUMNS_CP)
             df_cp["Ngày"] = pd.Series(dtype='datetime64[ns]')
@@ -217,7 +172,7 @@ if uploaded_key is not None:
             for c in cols_to_numeric:
                 if c in df_main.columns: df_main[c] = df_main[c].apply(to_num)
 
-        # --- SIDEBAR ---
+        # --- SIDEBAR NOTIFICATION ---
         with st.sidebar:
             st.divider()
             st.header("🔔 Thông Báo")
@@ -230,7 +185,7 @@ if uploaded_key is not None:
                 if df_hd.empty and df_kh.empty: st.success("✅ Ổn định")
                 else:
                     if not df_hd.empty:
-                        st.error(f"🔴 {len(df_hd)} Hợp đồng cần xử lý")
+                        st.error(f"🔴 {len(df_hd)} HĐ cần xử lý")
                         for _, r in df_hd.iterrows():
                              d = (r['Ngày hết HĐ']-today).days
                              msg = "Đã hết hạn" if d < 0 else f"Còn {d} ngày"
@@ -238,7 +193,7 @@ if uploaded_key is not None:
                     if not df_kh.empty:
                         st.warning(f"🟡 {len(df_kh)} Khách sắp out")
             st.divider()
-            if st.button("🔄 Tải lại dữ liệu (F5)", use_container_width=True): 
+            if st.button("🔄 F5 - Tải lại", use_container_width=True): 
                 st.cache_data.clear()
                 st.rerun()
 
@@ -253,7 +208,9 @@ if uploaded_key is not None:
             "💰 Quản Lý Chi Phí", "📊 P&L (Lợi Nhuận)", "💸 Dòng Tiền" 
         ])
 
-        # --- TAB 1, 2, 3, 4, 5 (GIỮ NGUYÊN) ---
+        # ----------------------------------------------------------------------
+        # TAB 1: NHẬP LIỆU THỦ CÔNG
+        # ----------------------------------------------------------------------
         with tabs[0]:
             st.subheader("✍️ Nhập Liệu Hợp Đồng Mới")
             with st.expander("🛠️ Công cụ hỗ trợ (Zalo / Hình ảnh)", expanded=False):
@@ -325,6 +282,9 @@ if uploaded_key is not None:
                     st.session_state['auto'] = {}
                     time.sleep(1); st.rerun()
 
+        # ----------------------------------------------------------------------
+        # TAB 2: UPLOAD EXCEL
+        # ----------------------------------------------------------------------
         with tabs[1]:
             st.header("📤 Quản lý File Excel")
             st.download_button("📥 Tải File Mẫu Hợp Đồng (.xlsx)", convert_df_to_excel(pd.DataFrame(columns=COLUMNS)), "mau_hop_dong.xlsx")
@@ -345,6 +305,9 @@ if uploaded_key is not None:
                             save_data(df_up, "HOP_DONG"); time.sleep(2); st.rerun()
                 except Exception as e: st.error(f"❌ File Excel bị lỗi: {e}")
 
+        # ----------------------------------------------------------------------
+        # TAB 3: CHI PHÍ NỘI BỘ
+        # ----------------------------------------------------------------------
         with tabs[2]:
             st.subheader("💸 Quản Lý Chi Phí Nội Bộ")
             with st.expander("🧮 Máy tính & Thêm Mới Thủ Công", expanded=True):
@@ -383,6 +346,9 @@ if uploaded_key is not None:
             edited_cp = st.data_editor(df_cp, num_rows="dynamic", use_container_width=True, column_config={"Ngày": st.column_config.DateColumn(format="DD/MM/YYYY"), "Tiền": st.column_config.NumberColumn(format="%d"), "Mã căn": st.column_config.TextColumn(), "Chỉ số đồng hồ": st.column_config.TextColumn(width="medium")})
             if st.button("💾 LƯU LÊN ĐÁM MÂY (CHI PHÍ)", type="primary"): save_data(edited_cp, "CHI_PHI"); time.sleep(1); st.rerun()
 
+        # ----------------------------------------------------------------------
+        # TAB 4: DỮ LIỆU GỐC
+        # ----------------------------------------------------------------------
         with tabs[3]:
             st.subheader("📋 Dữ Liệu Hợp Đồng (Gốc)")
             search_term = st.text_input("🔍 Tìm kiếm nhanh:")
@@ -393,6 +359,9 @@ if uploaded_key is not None:
             edited_df = st.data_editor(df_show, num_rows="dynamic", use_container_width=True, column_config={"Ngày ký": st.column_config.DateColumn(format="DD/MM/YYYY"), "Ngày hết HĐ": st.column_config.DateColumn(format="DD/MM/YYYY"), "Ngày in": st.column_config.DateColumn(format="DD/MM/YYYY"), "Ngày out": st.column_config.DateColumn(format="DD/MM/YYYY"), "Giá": st.column_config.NumberColumn(format="%d"), "Mã căn": st.column_config.TextColumn()})
             if st.button("💾 LƯU LÊN ĐÁM MÂY (HỢP ĐỒNG)", type="primary"): save_data(edited_df, "HOP_DONG"); time.sleep(1); st.rerun()
 
+        # ----------------------------------------------------------------------
+        # TAB 5: CẢNH BÁO
+        # ----------------------------------------------------------------------
         with tabs[4]:
             st.subheader("🏠 Trung Tâm Cảnh Báo")
             if not df_main.empty:
@@ -431,19 +400,28 @@ if uploaded_key is not None:
                             st.code(f"Chào bạn {row['Tên khách thuê']},\nPhòng {row['Mã căn']} đến hạn trả vào {row['Ngày out'].strftime('%d/%m/%Y')}. Vui lòng vệ sinh và bàn giao.", language=None)
 
         # ----------------------------------------------------------------------
-        # TAB 6: QUẢN LÝ CHI PHÍ (DETAIL VIEW) - CỘT GHI CHÚ RỘNG
+        # TAB 6: QUẢN LÝ CHI PHÍ (DETAIL VIEW) - KHÔNG GỘP DÒNG
         # ----------------------------------------------------------------------
         with tabs[5]:
             st.subheader("💰 Quản Lý Chi Phí & Doanh Thu Chi Tiết")
             if not df_main.empty:
-                df_agg = gop_du_lieu_phong(df_main)
+                cols_to_show = ["Toà", "Mã căn", "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Giá", "KH thanh toán", "KH cọc", "SALE THẢO", "SALE NGA", "SALE LINH", "Công ty", "Cá Nhân"]
+                cols_with_dates = cols_to_show + ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]
+                existing_cols = [c for c in cols_with_dates if c in df_main.columns]
                 
-                cols_to_show = ["Toà", "Mã căn", "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Giá", "KH thanh toán", "KH cọc", "SALE THẢO", "SALE NGA", "SALE LINH", "Công ty", "Cá Nhân", "Ghi chú"]
-                existing_cols = [c for c in cols_to_show if c in df_agg.columns]
-                
-                df_view = df_agg[existing_cols].copy()
+                # HIỂN THỊ DỮ LIỆU GỐC (RAW)
+                df_view = df_main[existing_cols].copy()
                 df_view = df_view.rename(columns={"TT cho chủ nhà": "Thanh toán HĐ", "Cọc cho chủ nhà": "Cọc HĐ", "Giá": "Giá thuê", "KH thanh toán": "Khách thanh toán", "KH cọc": "Khách cọc", "Công ty": "HH Công ty", "Cá Nhân": "HH Cá nhân"})
                 if "Mã căn" in df_view.columns: df_view = df_view.sort_values(by=["Toà", "Mã căn"])
+                
+                # Ghi chú đơn giản cho từng dòng
+                def make_note(row):
+                    def d(x): return x.strftime('%d/%m/%y') if not pd.isna(x) else "?"
+                    k = d(row.get('Ngày ký')); h = d(row.get('Ngày hết HĐ')); i = d(row.get('Ngày in')); o = d(row.get('Ngày out'))
+                    return f"HĐ: {k}-{h} | Khách: {i}-{o}"
+                
+                df_view["Ghi chú"] = df_view.apply(make_note, axis=1)
+                df_view = df_view.drop(columns=["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"], errors='ignore')
                 
                 numeric_cols = ["Giá HĐ", "Thanh toán HĐ", "Cọc HĐ", "Giá thuê", "Khách thanh toán", "Khách cọc", "SALE THẢO", "SALE NGA", "SALE LINH", "HH Công ty", "HH Cá nhân"]
                 total_row = pd.DataFrame(df_view[numeric_cols].sum(numeric_only=True)).T; total_row["Toà"] = "TỔNG CỘNG"; total_row = total_row.fillna("")
@@ -454,77 +432,49 @@ if uploaded_key is not None:
                 st.dataframe(
                     df_final_view.style.set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'}),
                     use_container_width=True, 
-                    # 💡 TĂNG ĐỘ RỘNG CỘT GHI CHÚ
-                    column_config={"Ghi chú": st.column_config.TextColumn(width=500, help="Di chuột để xem chi tiết hoặc dùng công cụ soi bên dưới")}
+                    column_config={"Ghi chú": st.column_config.TextColumn(width="medium")}
                 )
-
-                # --- 🔎 CÔNG CỤ SOI GHI CHÚ ---
-                st.divider()
-                st.write("##### 🔎 Soi Chi Tiết Ghi Chú")
-                c_sel, c_view = st.columns([1, 3])
-                with c_sel:
-                    # Tạo danh sách phòng để chọn
-                    list_phong = df_view[df_view['Mã căn'].notna()]['Mã căn'].unique().tolist()
-                    phong_chon = st.selectbox("Chọn Phòng để xem:", list_phong, key="sel_tab6")
-                with c_view:
-                    if phong_chon:
-                        # Lấy ghi chú của phòng đó
-                        note_content = df_view[df_view['Mã căn'] == phong_chon]['Ghi chú'].values[0]
-                        st.text_area("Nội dung ghi chú đầy đủ:", value=note_content, height=150)
-
             else: st.info("Chưa có dữ liệu.")
 
         # ----------------------------------------------------------------------
-        # TAB 7: TỔNG HỢP CHI PHÍ (P&L) - ĐÃ GỘP DÒNG - CÓ SOI GHI CHÚ
+        # TAB 7: TỔNG HỢP CHI PHÍ (P&L) - KHÔNG GỘP DÒNG
         # ----------------------------------------------------------------------
         with tabs[6]:
             st.subheader("📊 Báo Cáo Lợi Nhuận (Profit & Loss)")
-            c_filter1, c_filter2 = st.columns(2)
-            with c_filter1: sel_month = st.selectbox("Chọn Tháng", range(1, 13), index=date.today().month - 1, key="pl_month")
-            with c_filter2: sel_year = st.number_input("Chọn Năm", min_value=2020, max_value=2030, value=date.today().year, key="pl_year")
-            st.divider()
-
             if not df_main.empty:
-                df_merged = gop_du_lieu_phong(df_main)
-                df_calc = df_merged.copy()
+                df_calc = df_main.copy()
                 
                 def get_months(start, end):
                     if pd.isna(start) or pd.isna(end): return 0
                     try: return max(0, (end - start).days / 30)
                     except: return 0
                 
+                # Tính toán trên từng dòng
                 df_calc['Tháng HĐ'] = df_calc.apply(lambda r: get_months(r['Ngày ký'], r['Ngày hết HĐ']), axis=1)
                 df_calc['Tổng giá trị HĐ'] = (df_calc['Giá HĐ'] * df_calc['Tháng HĐ'])
+                
                 df_calc['Tháng Thuê'] = df_calc.apply(lambda r: get_months(r['Ngày in'], r['Ngày out']), axis=1)
                 df_calc['Chi phí vốn (theo khách)'] = (df_calc['Giá HĐ'] * df_calc['Tháng Thuê'])
                 df_calc['Doanh thu cho thuê'] = (df_calc['Giá'] * df_calc['Tháng Thuê'])
+                
                 df_calc['Tổng Chi Phí Sale'] = df_calc['SALE THẢO'] + df_calc['SALE NGA'] + df_calc['SALE LINH']
                 df_calc['Lợi nhuận ròng'] = df_calc['Doanh thu cho thuê'] - df_calc['Chi phí vốn (theo khách)'] - df_calc['Tổng Chi Phí Sale'] - df_calc['Công ty'] - df_calc['Cá Nhân']
 
                 # Metrics
-                total_rev = df_calc['Doanh thu cho thuê'].sum()
-                total_cost = df_calc['Chi phí vốn (theo khách)'].sum() + df_calc['Tổng Chi Phí Sale'].sum() + df_calc['Công ty'].sum() + df_calc['Cá Nhân'].sum()
-                total_net = df_calc['Lợi nhuận ròng'].sum()
-                
                 c_m1, c_m2, c_m3 = st.columns(3)
-                c_m1.metric("💰 TỔNG DOANH THU", fmt_vnd(total_rev))
-                c_m2.metric("📉 TỔNG CHI PHÍ & VỐN", fmt_vnd(total_cost))
-                c_m3.metric("💎 TỔNG LỢI NHUẬN", fmt_vnd(total_net), delta=fmt_vnd(total_net), delta_color="normal" if total_net > 0 else "inverse")
+                c_m1.metric("💰 TỔNG DOANH THU", fmt_vnd(df_calc['Doanh thu cho thuê'].sum()))
+                c_m2.metric("📉 TỔNG CHI PHÍ & VỐN", fmt_vnd(df_calc['Chi phí vốn (theo khách)'].sum() + df_calc['Tổng Chi Phí Sale'].sum() + df_calc['Công ty'].sum() + df_calc['Cá Nhân'].sum()))
+                c_m3.metric("💎 TỔNG LỢI NHUẬN", fmt_vnd(df_calc['Lợi nhuận ròng'].sum()))
                 st.divider()
 
-                # Cập nhật Ghi chú thông minh (Kèm nội dung nhập liệu cũ)
                 def make_smart_note(row, profit, cogs):
-                    original_note = str(row.get('Ghi chú', ''))
-                    warn = []
-                    if cogs == 0 and profit == 0: warn.append("⚠️ Thiếu ngày")
-                    elif profit < 0: warn.append("📉 Lỗ")
-                    
-                    if warn: return " | ".join(warn) + "\n" + original_note
-                    return original_note
+                    def d(x): return x.strftime('%d/%m/%y') if not pd.isna(x) else "?"
+                    k = d(row.get('Ngày ký')); h = d(row.get('Ngày hết HĐ')); i = d(row.get('Ngày in')); o = d(row.get('Ngày out'))
+                    return f"HĐ: {k}-{h} | Khách: {i}-{o}"
 
-                df_calc["Ghi chú Smart"] = df_calc.apply(lambda r: make_smart_note(r, r['Lợi nhuận ròng'], r['Chi phí vốn (theo khách)']), axis=1)
+                df_calc["Ghi chú"] = df_calc.apply(lambda r: make_smart_note(r, r['Lợi nhuận ròng'], r['Chi phí vốn (theo khách)']), axis=1)
                 
-                cols_final = ["Toà", "Mã căn", "Tổng giá trị HĐ", "Chi phí vốn (theo khách)", "Doanh thu cho thuê", "Tổng Chi Phí Sale", "Công ty", "Cá Nhân", "Lợi nhuận ròng", "Ghi chú Smart"]
+                cols_final = ["Toà", "Mã căn", "Tổng giá trị HĐ", "Chi phí vốn (theo khách)", "Doanh thu cho thuê", "Tổng Chi Phí Sale", "Công ty", "Cá Nhân", "Lợi nhuận ròng", "Ghi chú"]
                 if "Mã căn" in df_calc.columns: df_calc = df_calc.sort_values(by=["Toà", "Mã căn"])
                 
                 df_show = df_calc[cols_final].copy()
@@ -539,32 +489,19 @@ if uploaded_key is not None:
                 st.dataframe(
                     df_res.style.set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'}).applymap(highlight, subset=["Lợi nhuận ròng"]).format("{:,.0f}", subset=pd.IndexSlice[0:len(df_res)-1, num_cols]),
                     use_container_width=True, 
-                    # 💡 TĂNG ĐỘ RỘNG CỘT GHI CHÚ
-                    column_config={"Ghi chú Smart": st.column_config.TextColumn("Ghi chú & Cảnh báo", width=500)}
+                    column_config={"Ghi chú": st.column_config.TextColumn(width="large")}
                 )
-
-                # --- 🔎 CÔNG CỤ SOI GHI CHÚ ---
-                st.divider()
-                st.write("##### 🔎 Soi Chi Tiết Ghi Chú")
-                c_sel_pl, c_view_pl = st.columns([1, 3])
-                with c_sel_pl:
-                    list_phong_pl = df_calc[df_calc['Mã căn'].notna()]['Mã căn'].unique().tolist()
-                    phong_chon_pl = st.selectbox("Chọn Phòng:", list_phong_pl, key="sel_tab7")
-                with c_view_pl:
-                    if phong_chon_pl:
-                        note_pl = df_calc[df_calc['Mã căn'] == phong_chon_pl]['Ghi chú Smart'].values[0]
-                        st.info(note_pl) # Dùng st.info để hiển thị nổi bật
-
             else: st.info("Chưa có dữ liệu.")
 
         # ----------------------------------------------------------------------
-        # TAB 8: QUẢN LÝ DÒNG TIỀN - CÓ SOI GHI CHÚ
+        # TAB 8: QUẢN LÝ DÒNG TIỀN - KHÔNG GỘP DÒNG
         # ----------------------------------------------------------------------
         with tabs[7]:
             st.subheader("💸 Quản Lý Dòng Tiền (Thực Thu - Thực Chi)")
             if not df_main.empty:
-                df_cf = gop_du_lieu_phong(df_main)
+                df_cf = df_main.copy()
                 
+                # Tính toán trên từng dòng
                 df_cf['Thu: Thanh toán'] = df_cf['KH thanh toán']
                 df_cf['Thu: Cọc'] = df_cf['KH cọc']
                 df_cf['TỔNG THU'] = df_cf['Thu: Thanh toán'] + df_cf['Thu: Cọc']
@@ -582,23 +519,19 @@ if uploaded_key is not None:
                 df_final_cf['DÒNG TIỀN RÒNG'] = df_final_cf['TỔNG THU'] - df_final_cf['TỔNG CHI']
                 
                 c_cf1, c_cf2, c_cf3 = st.columns(3)
-                tot_in = df_final_cf['TỔNG THU'].sum()
-                tot_out = df_final_cf['TỔNG CHI'].sum()
-                net_cf = tot_in - tot_out
-                c_cf1.metric("💰 TỔNG THỰC THU", fmt_vnd(tot_in))
-                c_cf2.metric("💸 TỔNG THỰC CHI", fmt_vnd(tot_out))
-                c_cf3.metric("💎 DÒNG TIỀN RÒNG", fmt_vnd(net_cf), delta_color="normal" if net_cf > 0 else "inverse")
+                c_cf1.metric("💰 TỔNG THỰC THU", fmt_vnd(df_final_cf['TỔNG THU'].sum()))
+                c_cf2.metric("💸 TỔNG THỰC CHI", fmt_vnd(df_final_cf['TỔNG CHI'].sum()))
+                c_cf3.metric("💎 DÒNG TIỀN RÒNG", fmt_vnd(df_final_cf['DÒNG TIỀN RÒNG'].sum()))
                 st.divider()
 
                 def explain_cf(row):
-                    original_note = str(row.get('Ghi chú', ''))
                     net = row['DÒNG TIỀN RÒNG']
                     status = "✅ Dương" if net >= 0 else "⚠️ Âm"
-                    return f"[{status}] {original_note}"
+                    return f"[{status}]"
 
-                df_final_cf['Ghi chú CF'] = df_final_cf.apply(explain_cf, axis=1)
+                df_final_cf['Ghi chú'] = df_final_cf.apply(explain_cf, axis=1)
 
-                cols_cf_show = ["Toà", "Mã căn", "Thu: Thanh toán", "Thu: Cọc", "TỔNG THU", "Chi: Chủ nhà", "Chi: Hoa hồng", "Chi: Vận hành", "TỔNG CHI", "DÒNG TIỀN RÒNG", "Ghi chú CF"]
+                cols_cf_show = ["Toà", "Mã căn", "Thu: Thanh toán", "Thu: Cọc", "TỔNG THU", "Chi: Chủ nhà", "Chi: Hoa hồng", "Chi: Vận hành", "TỔNG CHI", "DÒNG TIỀN RÒNG", "Ghi chú"]
                 if "Mã căn" in df_final_cf.columns: df_final_cf = df_final_cf.sort_values(by=["Toà", "Mã căn"])
                 df_cf_display = df_final_cf[cols_cf_show].copy()
                 
@@ -613,22 +546,8 @@ if uploaded_key is not None:
                 st.dataframe(
                     df_cf_result.style.set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'}).applymap(highlight_cf, subset=["DÒNG TIỀN RÒNG"]).format("{:,.0f}", subset=pd.IndexSlice[0:len(df_cf_result)-1, num_cols_cf]),
                     use_container_width=True, 
-                    # 💡 TĂNG ĐỘ RỘNG CỘT GHI CHÚ
-                    column_config={"Ghi chú CF": st.column_config.TextColumn("Chi tiết & Ghi chú", width=500)}
+                    column_config={"Ghi chú": st.column_config.TextColumn(width="medium")}
                 )
-
-                # --- 🔎 CÔNG CỤ SOI GHI CHÚ ---
-                st.divider()
-                st.write("##### 🔎 Soi Chi Tiết Ghi Chú")
-                c_sel_cf, c_view_cf = st.columns([1, 3])
-                with c_sel_cf:
-                    list_phong_cf = df_final_cf[df_final_cf['Mã căn'].notna()]['Mã căn'].unique().tolist()
-                    phong_chon_cf = st.selectbox("Chọn Phòng:", list_phong_cf, key="sel_tab8")
-                with c_view_cf:
-                    if phong_chon_cf:
-                        note_cf = df_final_cf[df_final_cf['Mã căn'] == phong_chon_cf]['Ghi chú CF'].values[0]
-                        st.info(note_cf)
-
             else: st.info("Chưa có dữ liệu.")
 
 else:
