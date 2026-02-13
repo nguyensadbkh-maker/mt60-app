@@ -6,14 +6,14 @@ import json
 import re
 import time
 import io
-# from PIL import Image # Bỏ nếu không dùng để tránh lỗi import
+# from PIL import Image # Bỏ nếu không dùng
 
 # --- THƯ VIỆN KẾT NỐI GOOGLE SHEETS ---
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # ==============================================================================
-# 1. CẤU HÌNH HỆ THỐNG
+# 1. CẤU HÌNH HỆ THỐNG VÀ GIAO DIỆN COMPACT
 # ==============================================================================
 
 st.set_page_config(
@@ -23,6 +23,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# --- CSS TÙY CHỈNH ĐỂ THU GỌN KHOẢNG TRẮNG ---
+st.markdown("""
+    <style>
+        .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+        div[data-testid="stVerticalBlock"] { gap: 0.2rem !important; }
+        div[data-testid="stDataFrame"] { width: 100%; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
+    </style>
+""", unsafe_allow_html=True)
+
 # Kiểm tra thư viện AI
 try:
     from google import genai
@@ -30,10 +41,8 @@ try:
 except ImportError:
     AI_AVAILABLE = False
 
-# Tên File Google Sheet
 SHEET_NAME = "MT60_DATABASE"
 
-# Danh sách cột chuẩn cho Hợp Đồng
 COLUMNS = [
     "Tòa nhà", "Mã căn", "Toà", "Chủ nhà - sale", "Ngày ký", "Ngày hết HĐ", 
     "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Tên khách thuê", 
@@ -42,14 +51,13 @@ COLUMNS = [
     "Hết hạn khách hàng", "Ráp khách khi hết hạn"
 ]
 
-# Danh sách cột chuẩn cho Chi Phí
 COLUMNS_CP = ["Ngày", "Mã căn", "Loại", "Tiền", "Chỉ số đồng hồ"]
 
 # ==============================================================================
 # 2. KẾT NỐI DỮ LIỆU
 # ==============================================================================
 
-st.title("☁️ MT60 STUDIO - HỆ THỐNG QUẢN LÝ TOÀN DIỆN")
+st.title("☁️ MT60 STUDIO - QUẢN LÝ TỔNG QUAN")
 st.markdown("---")
 
 st.sidebar.header("🔐 Đăng Nhập")
@@ -109,37 +117,30 @@ if uploaded_key is not None:
             try: return float(val)
             except: return 0
 
-        # --- HÀM ĐỊNH DẠNG SỐ (CÓ DẤU CHẤM, KHÔNG SỐ LẺ) ---
         def fmt_vnd(val):
             try:
                 if pd.isna(val) or val == "": return "-"
                 val = float(val)
-                # Định dạng: 1,000 -> replace , thành . -> 1.000
-                # :.0f nghĩa là không lấy số thập phân
                 if val < 0: return "({:,.0f})".format(abs(val)).replace(",", ".")
                 return "{:,.0f}".format(val).replace(",", ".")
             except: return str(val)
 
-        # --- HÀM ĐỊNH DẠNG NGÀY (dd/mm/yy) ---
         def fmt_date(val):
             try:
                 if pd.isna(val) or val == "": return ""
                 if isinstance(val, str):
-                    # Thử parse string sang date rồi format lại
                     val = pd.to_datetime(val, errors='coerce')
-                return val.strftime('%d/%m/%y') # dd/mm/yy (vd: 31/12/26)
+                if pd.isna(val): return ""
+                return val.strftime('%d/%m/%y')
             except: return str(val)
 
         def convert_df_to_excel(df):
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                # Format lại dữ liệu trước khi xuất Excel để giữ đúng định dạng nhìn thấy
                 df_export = df.copy()
                 for col in df_export.columns:
-                    # Kiểm tra nếu cột là ngày
                     if pd.api.types.is_datetime64_any_dtype(df_export[col]):
                         df_export[col] = df_export[col].dt.strftime('%d/%m/%y')
-                
                 df_export.to_excel(writer, index=False, sheet_name='Sheet1')
             return output.getvalue()
         
@@ -169,11 +170,18 @@ if uploaded_key is not None:
                 return json.loads(response.text.replace("```json", "").replace("```", "").strip())
             except: return None
 
-        # --- HÀM GỘP DỮ LIỆU ---
+        # --- HÀM GỘP DỮ LIỆU (ĐÃ SỬA LỖI KIỂU DỮ LIỆU) ---
         def gop_du_lieu_phong(df_input):
             if df_input.empty: return df_input
             df = df_input.copy()
             
+            # --- FIX BUG QUAN TRỌNG: ÉP KIỂU SỐ TRƯỚC KHI GỘP ---
+            numeric_cols_fix = ["Giá HĐ", "Giá", "TT cho chủ nhà", "Cọc cho chủ nhà", "KH thanh toán", "KH cọc", "Công ty", "Cá Nhân", "SALE THẢO", "SALE NGA", "SALE LINH"]
+            for col in numeric_cols_fix:
+                if col in df.columns:
+                    # Chuyển về số, lỗi thành 0.0
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+
             def tao_mo_ta_dong(row):
                 details = []
                 def d(x): return x.strftime('%d/%m/%y') if not pd.isna(x) else "?"
@@ -204,11 +212,13 @@ if uploaded_key is not None:
                 'Công ty': 'sum', 'Cá Nhân': 'sum',
                 'SALE THẢO': 'sum', 'SALE NGA': 'sum', 'SALE LINH': 'sum',
                 'Tên khách thuê': 'first',
-                '_chi_tiet_nhap': lambda x: '\n'.join([f"• Nhập lần {i+1}: {v}" for i, v in enumerate(x) if v != "Trống"])
+                '_chi_tiet_nhap': lambda x: '\n'.join([f"• Lần {i+1}: {v}" for i, v in enumerate(x) if v != "Trống"])
             }
             
             final_agg = {k: v for k, v in agg_rules.items() if k in df.columns}
             cols_group = ['Toà', 'Mã căn']
+            
+            # Chỉ gộp nếu có đủ cột
             if not all(col in df.columns for col in cols_group): return df
 
             df_grouped = df.groupby(cols_group, as_index=False).agg(final_agg)
@@ -261,12 +271,11 @@ if uploaded_key is not None:
                              status_msg = "ĐÃ HẾT HẠN" if days_left < 0 else f"Còn {days_left} ngày"
                              toa_nha = str(r['Toà']).strip() if str(r['Toà']).strip() != '' else "Chưa rõ"
                              phong = str(r['Mã căn']).strip()
-                             # HTML để giảm khoảng cách
                              st.markdown(f"""
-                             <div style="margin-bottom: 5px;">
-                                <b>🏠 {toa_nha} - P.{phong}</b><br>
-                                <span style="font-size:0.9em; color:#d9534f;">{status_msg} (Hết: {fmt_date(r['Ngày hết HĐ'])})</span>
-                             </div><hr style="margin: 5px 0;">
+                             <div style="border-bottom: 1px solid rgba(49, 51, 63, 0.2); padding-bottom: 4px; margin-bottom: 4px;">
+                                <strong style="color: #FF4B4B;">🏠 {toa_nha} - P.{phong}</strong><br>
+                                <span style="font-size: 0.9em; color: #555;">⚠️ {status_msg} (Hết: {fmt_date(r['Ngày hết HĐ'])})</span>
+                             </div>
                              """, unsafe_allow_html=True)
                     if not df_kh.empty:
                         st.warning(f"🟡 {len(df_kh)} Khách sắp out")
@@ -276,11 +285,11 @@ if uploaded_key is not None:
                             phong = str(r['Mã căn']).strip()
                             ten_khach = str(r['Tên khách thuê']).strip()
                             st.markdown(f"""
-                             <div style="margin-bottom: 5px;">
-                                <b>🚪 {toa_nha} - P.{phong}</b><br>
-                                <span style="font-size:0.9em;">👤 {ten_khach}</span><br>
-                                <span style="font-size:0.85em; color:#f0ad4e;">⏳ Còn {days_left} ngày (Out: {fmt_date(r['Ngày out'])})</span>
-                             </div><hr style="margin: 5px 0;">
+                             <div style="border-bottom: 1px solid rgba(49, 51, 63, 0.2); padding-bottom: 4px; margin-bottom: 4px;">
+                                <strong style="color: #FFA500;">🚪 {toa_nha} - P.{phong}</strong><br>
+                                <span style="font-size: 0.9em; color: #333;">👤 {ten_khach}</span><br>
+                                <span style="font-size: 0.85em; color: #666;">⏳ Còn {days_left} ngày (Out: {fmt_date(r['Ngày out'])})</span>
+                             </div>
                              """, unsafe_allow_html=True)
             st.divider()
             if st.button("🔄 Tải lại dữ liệu", use_container_width=True): 
@@ -405,7 +414,7 @@ if uploaded_key is not None:
                 column_config={
                     "Ngày ký": st.column_config.DateColumn(format="DD/MM/YY"),
                     "Ngày hết HĐ": st.column_config.DateColumn(format="DD/MM/YY"),
-                    "Ngày in": st.column_config.DateColumn(format="DD/MM/YYYY"), # Giữ 4 số năm nếu muốn, hoặc đổi YY
+                    "Ngày in": st.column_config.DateColumn(format="DD/MM/YY"), 
                     "Ngày out": st.column_config.DateColumn(format="DD/MM/YY"),
                 }
             )
