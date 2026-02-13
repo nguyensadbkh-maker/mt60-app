@@ -6,14 +6,14 @@ import json
 import re
 import time
 import io
-# from PIL import Image # Bỏ nếu không dùng
+# from PIL import Image # Giữ dòng này nếu bạn cần dùng tính năng đọc ảnh
 
 # --- THƯ VIỆN KẾT NỐI GOOGLE SHEETS ---
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # ==============================================================================
-# 1. CẤU HÌNH HỆ THỐNG VÀ GIAO DIỆN COMPACT
+# 1. CẤU HÌNH HỆ THỐNG
 # ==============================================================================
 
 st.set_page_config(
@@ -23,12 +23,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS TÙY CHỈNH ĐỂ THU GỌN KHOẢNG TRẮNG ---
+# --- CSS: TÙY CHỈNH GIAO DIỆN NHỎ GỌN (COMPACT) ---
 st.markdown("""
     <style>
         .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
         div[data-testid="stVerticalBlock"] { gap: 0.2rem !important; }
         div[data-testid="stDataFrame"] { width: 100%; }
+        /* Tùy chỉnh thanh cuộn */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
     </style>
@@ -121,6 +122,7 @@ if uploaded_key is not None:
             try:
                 if pd.isna(val) or val == "": return "-"
                 val = float(val)
+                # Format: 1.000.000 (Dấu chấm phân cách ngàn, không số lẻ)
                 if val < 0: return "({:,.0f})".format(abs(val)).replace(",", ".")
                 return "{:,.0f}".format(val).replace(",", ".")
             except: return str(val)
@@ -131,7 +133,7 @@ if uploaded_key is not None:
                 if isinstance(val, str):
                     val = pd.to_datetime(val, errors='coerce')
                 if pd.isna(val): return ""
-                return val.strftime('%d/%m/%y')
+                return val.strftime('%d/%m/%y') # Format dd/mm/yy
             except: return str(val)
 
         def convert_df_to_excel(df):
@@ -170,18 +172,26 @@ if uploaded_key is not None:
                 return json.loads(response.text.replace("```json", "").replace("```", "").strip())
             except: return None
 
-        # --- HÀM GỘP DỮ LIỆU (ĐÃ SỬA LỖI KIỂU DỮ LIỆU) ---
+        # --- HÀM GỘP DỮ LIỆU (QUAN TRỌNG: ĐÃ THÊM CHỐT CHẶN ÉP KIỂU SỐ) ---
         def gop_du_lieu_phong(df_input):
             if df_input.empty: return df_input
             df = df_input.copy()
             
-            # --- FIX BUG QUAN TRỌNG: ÉP KIỂU SỐ TRƯỚC KHI GỘP ---
-            numeric_cols_fix = ["Giá HĐ", "Giá", "TT cho chủ nhà", "Cọc cho chủ nhà", "KH thanh toán", "KH cọc", "Công ty", "Cá Nhân", "SALE THẢO", "SALE NGA", "SALE LINH"]
-            for col in numeric_cols_fix:
+            # --- CHỐT CHẶN: Ép toàn bộ cột tiền về dạng số thực (float) ---
+            # Bước này đảm bảo 100% không bị lỗi nối chuỗi (13+13=1313)
+            numeric_cols_force = [
+                "Giá HĐ", "Giá", 
+                "TT cho chủ nhà", "Cọc cho chủ nhà", 
+                "KH thanh toán", "KH cọc", 
+                "Công ty", "Cá Nhân", 
+                "SALE THẢO", "SALE NGA", "SALE LINH"
+            ]
+            for col in numeric_cols_force:
                 if col in df.columns:
-                    # Chuyển về số, lỗi thành 0.0
+                    # 'coerce' biến lỗi thành NaN, sau đó fillna(0)
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
+            # Tạo ghi chú
             def tao_mo_ta_dong(row):
                 details = []
                 def d(x): return x.strftime('%d/%m/%y') if not pd.isna(x) else "?"
@@ -203,6 +213,7 @@ if uploaded_key is not None:
 
             df['_chi_tiet_nhap'] = df.apply(tao_mo_ta_dong, axis=1)
 
+            # Quy tắc gộp
             agg_rules = {
                 'Ngày ký': 'min', 'Ngày hết HĐ': 'max',
                 'Ngày in': 'min', 'Ngày out': 'max',
@@ -218,7 +229,6 @@ if uploaded_key is not None:
             final_agg = {k: v for k, v in agg_rules.items() if k in df.columns}
             cols_group = ['Toà', 'Mã căn']
             
-            # Chỉ gộp nếu có đủ cột
             if not all(col in df.columns for col in cols_group): return df
 
             df_grouped = df.groupby(cols_group, as_index=False).agg(final_agg)
