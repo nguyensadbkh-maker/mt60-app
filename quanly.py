@@ -6,7 +6,7 @@ import json
 import re
 import time
 import io
-# from PIL import Image # Bỏ nếu không dùng
+# from PIL import Image # Giữ dòng này nếu bạn cần dùng tính năng đọc ảnh
 
 # --- THƯ VIỆN KẾT NỐI GOOGLE SHEETS ---
 import gspread
@@ -29,6 +29,7 @@ st.markdown("""
         .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
         div[data-testid="stVerticalBlock"] { gap: 0.2rem !important; }
         div[data-testid="stDataFrame"] { width: 100%; }
+        /* Tùy chỉnh thanh cuộn */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
     </style>
@@ -121,13 +122,15 @@ if uploaded_key is not None:
                 except: return 0
             return 0
 
+        # --- HÀM FORMAT ĐỂ HIỂN THỊ (QUAN TRỌNG: TRẢ VỀ STRING) ---
         def fmt_vnd(val):
             try:
                 val = float(val) # Đảm bảo là số trước khi format
                 if pd.isna(val): return "-"
+                # Format: 1.000.000 (Dấu chấm phân cách ngàn, không số lẻ)
                 if val < 0: return "({:,.0f})".format(abs(val)).replace(",", ".")
                 return "{:,.0f}".format(val).replace(",", ".")
-            except: return "0"
+            except: return str(val)
 
         def fmt_date(val):
             try:
@@ -135,7 +138,7 @@ if uploaded_key is not None:
                 if isinstance(val, str):
                     val = pd.to_datetime(val, errors='coerce')
                 if pd.isna(val): return ""
-                return val.strftime('%d/%m/%y')
+                return val.strftime('%d/%m/%y') # Format dd/mm/yy
             except: return ""
 
         def convert_df_to_excel(df):
@@ -174,21 +177,23 @@ if uploaded_key is not None:
                 return json.loads(response.text.replace("```json", "").replace("```", "").strip())
             except: return None
 
-        # --- HÀM GỘP DỮ LIỆU (FIX BUG: ÉP KIỂU SỐ TRƯỚC KHI CỘNG) ---
+        # --- HÀM GỘP DỮ LIỆU ---
         def gop_du_lieu_phong(df_input):
             if df_input.empty: return df_input
             df = df_input.copy()
             
-            # --- FIX BUG: Chuyển đổi toàn bộ cột tiền thành số thực (float) ---
-            # Bước này ngăn chặn việc nối chuỗi (String Concatenation)
-            cols_tien = [
+            # Chuẩn hóa tên cột (xóa khoảng trắng thừa nếu có)
+            df.columns = df.columns.str.strip()
+
+            # --- CHỐT CHẶN: Ép toàn bộ cột tiền về dạng số thực (float) ---
+            numeric_cols_force = [
                 "Giá HĐ", "Giá", 
                 "TT cho chủ nhà", "Cọc cho chủ nhà", 
                 "KH thanh toán", "KH cọc", 
                 "Công ty", "Cá Nhân", 
                 "SALE THẢO", "SALE NGA", "SALE LINH"
             ]
-            for col in cols_tien:
+            for col in numeric_cols_force:
                 if col in df.columns:
                     # Xóa ký tự lạ, chuyển về số, lỗi -> 0.0
                     if df[col].dtype == object:
@@ -258,6 +263,7 @@ if uploaded_key is not None:
 
         # Clean Hop Dong
         if not df_main.empty:
+            df_main.columns = df_main.columns.str.strip() # Xóa khoảng trắng tên cột
             if "Mã căn" in df_main.columns: df_main["Mã căn"] = df_main["Mã căn"].astype(str)
             for c in ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]:
                 if c in df_main.columns: df_main[c] = pd.to_datetime(df_main[c], errors='coerce')
@@ -409,19 +415,20 @@ if uploaded_key is not None:
                     save_data(df_comb, "CHI_PHI"); time.sleep(1); st.rerun()
                 except Exception as e: st.error(f"Lỗi: {e}")
             
-            # Hiển thị bảng chi phí với định dạng số và ngày
+            # Display CP with formatting (convert to string to avoid bugs)
             df_cp_show = df_cp.copy()
             df_cp_show["Tiền"] = df_cp_show["Tiền"].apply(fmt_vnd)
-            st.dataframe(
-                df_cp_show, 
-                use_container_width=True,
-                column_config={"Ngày": st.column_config.DateColumn(format="DD/MM/YY")}
-            )
+            st.dataframe(df_cp_show, use_container_width=True, column_config={"Ngày": st.column_config.DateColumn(format="DD/MM/YY")})
 
         with tabs[3]:
             st.subheader("📋 Dữ Liệu Gốc")
-            # Format ngày cho bảng gốc
+            # Format display for Raw Data
             df_main_show = df_main.copy()
+            # Convert all numeric cols to formatted strings
+            cols_money = ["Giá", "Giá HĐ", "SALE THẢO", "SALE NGA", "SALE LINH", "Công ty", "Cá Nhân", "TT cho chủ nhà", "Cọc cho chủ nhà", "KH thanh toán", "KH cọc"]
+            for c in cols_money:
+                if c in df_main_show.columns: df_main_show[c] = df_main_show[c].apply(fmt_vnd)
+                
             st.dataframe(
                 df_main_show, 
                 use_container_width=True,
@@ -448,6 +455,7 @@ if uploaded_key is not None:
                 num_cols = ["Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Giá", "KH thanh toán", "KH cọc", "SALE THẢO", "SALE NGA", "SALE LINH", "Công ty", "Cá Nhân"]
                 # Save numeric for export
                 df_export_6 = df_view.copy() 
+                # Convert to string for display to avoid 2^53 limits
                 for c in num_cols: 
                     if c in df_view.columns: df_view[c] = df_view[c].apply(fmt_vnd)
                 
@@ -457,7 +465,6 @@ if uploaded_key is not None:
                     column_config={"Ghi chú": st.column_config.TextColumn(width=500)}
                 )
                 
-                # Nút tải xuống
                 st.download_button("📥 Tải Bảng Excel", convert_df_to_excel(df_export_6), "QuanLyChiPhi.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
                 st.divider(); st.write("##### 🔎 Soi Chi Tiết")
@@ -485,7 +492,7 @@ if uploaded_key is not None:
                 
                 df_show = df_calc[["Toà", "Mã căn", "Doanh thu", "Giá vốn", "Chi phí Sale", "Lợi nhuận", "Ghi chú"]]
                 
-                # Format bảng hiển thị P&L
+                # Format to string to handle large numbers
                 for c in ["Doanh thu", "Giá vốn", "Chi phí Sale", "Lợi nhuận"]:
                     df_show[c] = df_show[c].apply(fmt_vnd)
 
@@ -519,6 +526,7 @@ if uploaded_key is not None:
                 c3.metric("Dòng Tiền Ròng", fmt_vnd(df_cf['Ròng'].sum()))
                 
                 df_cf_show = df_cf[["Toà", "Mã căn", "Thu", "Chi", "Chi phí VH", "Ròng", "Ghi chú"]].copy()
+                # Format string for display
                 for c in ["Thu", "Chi", "Chi phí VH", "Ròng"]:
                     df_cf_show[c] = df_cf_show[c].apply(fmt_vnd)
 
@@ -572,7 +580,9 @@ if uploaded_key is not None:
                     
                     st.divider()
                     df_display = df_month_rep.copy()
-                    for c in ["Doanh thu tháng", "Chi phí thuê (Vốn)", "Thuế phải đóng", "Lợi nhuận ròng"]: df_display[c] = df_display[c].apply(fmt_vnd)
+                    # Convert to string for display
+                    for c in ["Doanh thu tháng", "Chi phí thuê (Vốn)", "Thuế phải đóng", "Lợi nhuận ròng"]: 
+                        df_display[c] = df_display[c].apply(fmt_vnd)
                     
                     st.dataframe(
                         df_display.style.set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'}), 
