@@ -6,8 +6,7 @@ import json
 import re
 import time
 import io
-# Bỏ import Image nếu không dùng để tránh lỗi, hoặc giữ nếu code cũ cần
-from PIL import Image 
+from PIL import Image
 
 # --- THƯ VIỆN KẾT NỐI GOOGLE SHEETS ---
 import gspread
@@ -31,8 +30,10 @@ try:
 except ImportError:
     AI_AVAILABLE = False
 
+# Tên File Google Sheet
 SHEET_NAME = "MT60_DATABASE"
 
+# Danh sách cột chuẩn cho Hợp Đồng
 COLUMNS = [
     "Tòa nhà", "Mã căn", "Toà", "Chủ nhà - sale", "Ngày ký", "Ngày hết HĐ", 
     "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Tên khách thuê", 
@@ -41,6 +42,7 @@ COLUMNS = [
     "Hết hạn khách hàng", "Ráp khách khi hết hạn"
 ]
 
+# Danh sách cột chuẩn cho Chi Phí
 COLUMNS_CP = ["Ngày", "Mã căn", "Loại", "Tiền", "Chỉ số đồng hồ"]
 
 # ==============================================================================
@@ -176,7 +178,7 @@ if uploaded_key is not None:
             agg_rules = {
                 'Ngày ký': 'min', 'Ngày hết HĐ': 'max',
                 'Ngày in': 'min', 'Ngày out': 'max',
-                'Giá HĐ': 'max', 'Giá': 'max', # QUAN TRỌNG: Lấy MAX để không bị cộng dồn giá
+                'Giá HĐ': 'max', 'Giá': 'max', 
                 'TT cho chủ nhà': 'sum', 'Cọc cho chủ nhà': 'sum',
                 'KH thanh toán': 'sum', 'KH cọc': 'sum',
                 'Công ty': 'sum', 'Cá Nhân': 'sum',
@@ -262,7 +264,6 @@ if uploaded_key is not None:
         # ==============================================================================
         # 4. GIAO DIỆN CHÍNH (TABS)
         # ==============================================================================
-        # Thêm Tab 9 mới ở cuối
         tabs = st.tabs([
             "✍️ Nhập Liệu", "📥 Upload Excel", "💸 Chi Phí Nội Bộ", 
             "📋 Dữ Liệu Gốc", "🏠 Cảnh Báo", 
@@ -270,7 +271,7 @@ if uploaded_key is not None:
             "📅 Quyết Toán Tháng" 
         ])
 
-        # --- TAB 1, 2, 3, 4, 5 (GIỮ NGUYÊN) ---
+        # --- TAB 1 ---
         with tabs[0]:
             st.subheader("✍️ Nhập Liệu Hợp Đồng Mới")
             with st.expander("🛠️ Công cụ hỗ trợ", expanded=False):
@@ -374,11 +375,16 @@ if uploaded_key is not None:
                 df_view = df_agg[cols_exist].copy()
                 
                 num_cols = ["Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Giá", "KH thanh toán", "KH cọc", "SALE THẢO", "SALE NGA", "SALE LINH", "Công ty", "Cá Nhân"]
+                # Save numeric for export
+                df_export_6 = df_view.copy() 
                 for c in num_cols: 
                     if c in df_view.columns: df_view[c] = df_view[c].apply(fmt_vnd)
                 
                 st.dataframe(df_view.style.set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'}), use_container_width=True, column_config={"Ghi chú": st.column_config.TextColumn(width=500)})
                 
+                # Nút tải xuống
+                st.download_button("📥 Tải Bảng Excel", convert_df_to_excel(df_export_6), "QuanLyChiPhi.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
                 st.divider(); st.write("##### 🔎 Soi Chi Tiết")
                 sel_phong = st.selectbox("Chọn Phòng:", df_view['Mã căn'].unique(), key="sel_t6")
                 if sel_phong: st.text_area("Nội dung:", df_view[df_view['Mã căn']==sel_phong]['Ghi chú'].values[0], height=100)
@@ -393,7 +399,7 @@ if uploaded_key is not None:
                 def get_m(s, e): return max(0, (e-s).days/30) if pd.notna(s) and pd.notna(e) else 0
                 
                 df_calc['Doanh thu'] = df_calc.apply(lambda r: r['Giá'] * get_m(r['Ngày in'], r['Ngày out']), axis=1)
-                df_calc['Giá vốn'] = df_calc.apply(lambda r: r['Giá HĐ'] * get_m(r['Ngày in'], r['Ngày out']), axis=1) # Tính theo thời gian khách ở
+                df_calc['Giá vốn'] = df_calc.apply(lambda r: r['Giá HĐ'] * get_m(r['Ngày in'], r['Ngày out']), axis=1)
                 df_calc['Chi phí Sale'] = df_calc['SALE THẢO'] + df_calc['SALE NGA'] + df_calc['SALE LINH'] + df_calc['Công ty'] + df_calc['Cá Nhân']
                 df_calc['Lợi nhuận'] = df_calc['Doanh thu'] - df_calc['Giá vốn'] - df_calc['Chi phí Sale']
                 
@@ -404,6 +410,8 @@ if uploaded_key is not None:
                 
                 df_show = df_calc[["Toà", "Mã căn", "Doanh thu", "Giá vốn", "Chi phí Sale", "Lợi nhuận", "Ghi chú"]]
                 st.dataframe(df_show.style.applymap(lambda x: 'color: red' if isinstance(x, (int, float)) and x < 0 else '', subset=['Lợi nhuận']), use_container_width=True, column_config={"Ghi chú": st.column_config.TextColumn(width=500)})
+                
+                st.download_button("📥 Tải Báo Cáo P&L", convert_df_to_excel(df_calc), "BaoCaoLoiNhuan.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
         # --- TAB 8: DÒNG TIỀN ---
         with tabs[7]:
@@ -413,7 +421,6 @@ if uploaded_key is not None:
                 df_cf['Thu'] = df_cf['KH thanh toán'] + df_cf['KH cọc']
                 df_cf['Chi'] = df_cf['TT cho chủ nhà'] + df_cf['Cọc cho chủ nhà'] + df_cf['SALE THẢO'] + df_cf['SALE NGA'] + df_cf['SALE LINH'] + df_cf['Công ty'] + df_cf['Cá Nhân']
                 
-                # Merge chi phí vận hành
                 if not df_cp.empty:
                     cp_agg = df_cp.groupby('Mã căn')['Tiền'].sum().reset_index().rename(columns={'Tiền': 'Chi phí VH'})
                     df_cf = pd.merge(df_cf, cp_agg, on='Mã căn', how='left').fillna(0)
@@ -428,94 +435,57 @@ if uploaded_key is not None:
                 c3.metric("Dòng Tiền Ròng", fmt_vnd(df_cf['Ròng'].sum()))
                 
                 st.dataframe(df_cf[["Toà", "Mã căn", "Thu", "Chi", "Chi phí VH", "Ròng", "Ghi chú"]].style.applymap(lambda x: 'color: red' if isinstance(x, (int, float)) and x < 0 else '', subset=['Ròng']), use_container_width=True, column_config={"Ghi chú": st.column_config.TextColumn(width=500)})
+                st.download_button("📥 Tải Báo Cáo Dòng Tiền", convert_df_to_excel(df_cf), "BaoCaoDongTien.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-        # ----------------------------------------------------------------------
-        # TAB 9: QUYẾT TOÁN THÁNG & THUẾ (MỚI !!!)
-        # ----------------------------------------------------------------------
+        # --- TAB 9: QUYẾT TOÁN THÁNG & THUẾ ---
         with tabs[8]:
             st.subheader("📅 Báo Cáo Tài Chính Hàng Tháng & Thuế")
-            st.write("Chọn tháng để xem Doanh thu, Chi phí thuê phải trả và Thuế phải đóng trong tháng đó.")
-            
-            # 1. Bộ lọc thời gian
             col_t1, col_t2, col_t3 = st.columns(3)
-            with col_t1: 
-                q_month = st.selectbox("Tháng", range(1, 13), index=date.today().month - 1)
-            with col_t2: 
-                q_year = st.number_input("Năm", value=date.today().year)
-            with col_t3:
-                tax_rate = st.number_input("Thuế khoán (%)", value=10.0, step=0.1) / 100.0
+            with col_t1: q_month = st.selectbox("Tháng", range(1, 13), index=date.today().month - 1)
+            with col_t2: q_year = st.number_input("Năm", value=date.today().year)
+            with col_t3: tax_rate = st.number_input("Thuế khoán (%)", value=10.0, step=0.1) / 100.0
             
             st.divider()
             
             if not df_main.empty:
-                # Gộp dữ liệu trước khi tính
                 df_month_base = gop_du_lieu_phong(df_main)
-                
-                # Ngày đầu tháng và cuối tháng được chọn
                 start_date_mo = datetime(q_year, q_month, 1)
-                if q_month == 12:
-                    end_date_mo = datetime(q_year + 1, 1, 1) - timedelta(days=1)
-                else:
-                    end_date_mo = datetime(q_year, q_month + 1, 1) - timedelta(days=1)
+                if q_month == 12: end_date_mo = datetime(q_year + 1, 1, 1) - timedelta(days=1)
+                else: end_date_mo = datetime(q_year, q_month + 1, 1) - timedelta(days=1)
                 
                 results_month = []
-                
                 for idx, row in df_month_base.iterrows():
-                    # 1. Tính Giá Vốn (Tiền nhà phải trả chủ nhà trong tháng này)
-                    # Điều kiện: Hợp đồng với chủ nhà bao trùm tháng này
                     cost_month = 0
                     if pd.notna(row['Ngày ký']) and pd.notna(row['Ngày hết HĐ']):
                         if row['Ngày ký'] <= end_date_mo and row['Ngày hết HĐ'] >= start_date_mo:
-                            cost_month = row['Giá HĐ'] # Lấy giá HĐ 1 tháng
+                            cost_month = row['Giá HĐ']
                     
-                    # 2. Tính Doanh Thu (Tiền khách ở trong tháng này)
                     rev_month = 0
                     if pd.notna(row['Ngày in']) and pd.notna(row['Ngày out']):
                         if row['Ngày in'] <= end_date_mo and row['Ngày out'] >= start_date_mo:
-                            rev_month = row['Giá'] # Lấy giá thuê 1 tháng
+                            rev_month = row['Giá']
                     
-                    # Nếu có phát sinh doanh thu hoặc chi phí thì mới đưa vào báo cáo
                     if rev_month > 0 or cost_month > 0:
                         tax_amt = rev_month * tax_rate
                         net_profit = rev_month - cost_month - tax_amt
-                        
-                        results_month.append({
-                            "Toà": row['Toà'],
-                            "Mã căn": row['Mã căn'],
-                            "Doanh thu tháng": rev_month,
-                            "Chi phí thuê (Vốn)": cost_month,
-                            "Thuế phải đóng": tax_amt,
-                            "Lợi nhuận ròng": net_profit,
-                            "Ghi chú": row['Ghi chú']
-                        })
+                        results_month.append({"Toà": row['Toà'], "Mã căn": row['Mã căn'], "Doanh thu tháng": rev_month, "Chi phí thuê (Vốn)": cost_month, "Thuế phải đóng": tax_amt, "Lợi nhuận ròng": net_profit, "Ghi chú": row['Ghi chú']})
                 
                 if results_month:
                     df_month_rep = pd.DataFrame(results_month)
-                    
-                    # Tổng kết
                     m1, m2, m3, m4 = st.columns(4)
                     m1.metric("Tổng Doanh Thu", fmt_vnd(df_month_rep['Doanh thu tháng'].sum()))
                     m2.metric("Tổng Chi Phí Thuê", fmt_vnd(df_month_rep['Chi phí thuê (Vốn)'].sum()))
                     m3.metric("Tổng Thuế", fmt_vnd(df_month_rep['Thuế phải đóng'].sum()))
-                    m4.metric("Lợi Nhuận Ròng", fmt_vnd(df_month_rep['Lợi nhuận ròng'].sum()), 
-                              delta_color="normal" if df_month_rep['Lợi nhuận ròng'].sum() > 0 else "inverse")
+                    m4.metric("Lợi Nhuận Ròng", fmt_vnd(df_month_rep['Lợi nhuận ròng'].sum()), delta_color="normal" if df_month_rep['Lợi nhuận ròng'].sum() > 0 else "inverse")
                     
                     st.divider()
-                    
-                    # Format bảng hiển thị
                     df_display = df_month_rep.copy()
-                    for c in ["Doanh thu tháng", "Chi phí thuê (Vốn)", "Thuế phải đóng", "Lợi nhuận ròng"]:
-                        df_display[c] = df_display[c].apply(fmt_vnd)
-                        
-                    st.dataframe(
-                        df_display.style.set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'}),
-                        use_container_width=True,
-                        column_config={"Ghi chú": st.column_config.TextColumn(width=300)}
-                    )
-                else:
-                    st.warning(f"Không có dữ liệu hợp đồng nào hoạt động trong tháng {q_month}/{q_year}")
-            else:
-                st.info("Chưa có dữ liệu.")
+                    for c in ["Doanh thu tháng", "Chi phí thuê (Vốn)", "Thuế phải đóng", "Lợi nhuận ròng"]: df_display[c] = df_display[c].apply(fmt_vnd)
+                    
+                    st.dataframe(df_display.style.set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'}), use_container_width=True, column_config={"Ghi chú": st.column_config.TextColumn(width=300)})
+                    st.download_button("📥 Tải Báo Cáo Tháng", convert_df_to_excel(df_month_rep), f"BaoCaoThang_{q_month}_{q_year}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                else: st.warning(f"Không có dữ liệu trong tháng {q_month}/{q_year}")
+            else: st.info("Chưa có dữ liệu.")
 
 else:
     st.warning("👈 Vui lòng tải file **JSON Chìa Khóa** từ Google lên đây để bắt đầu.")
