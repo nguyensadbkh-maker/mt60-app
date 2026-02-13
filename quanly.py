@@ -6,7 +6,7 @@ import json
 import re
 import time
 import io
-# from PIL import Image # Giữ dòng này nếu bạn cần dùng tính năng đọc ảnh
+# from PIL import Image # Bỏ nếu không dùng
 
 # --- THƯ VIỆN KẾT NỐI GOOGLE SHEETS ---
 import gspread
@@ -23,13 +23,12 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS: TÙY CHỈNH GIAO DIỆN NHỎ GỌN (COMPACT) ---
+# --- CSS: TÙY CHỈNH GIAO DIỆN COMPACT ---
 st.markdown("""
     <style>
         .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
         div[data-testid="stVerticalBlock"] { gap: 0.2rem !important; }
         div[data-testid="stDataFrame"] { width: 100%; }
-        /* Tùy chỉnh thanh cuộn */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
     </style>
@@ -111,21 +110,24 @@ if uploaded_key is not None:
                 st.toast("✅ Đã lưu thành công!", icon="☁️")
             except Exception as e: st.error(f"❌ Lỗi: {e}")
 
+        # --- HÀM CHUYỂN ĐỔI SỐ AN TOÀN ---
         def to_num(val):
+            if isinstance(val, (int, float)): return float(val)
             if isinstance(val, str): 
-                val = val.replace(',', '').replace('.', '').strip()
-                if val == '' or val.lower() == 'nan': return 0
-            try: return float(val)
-            except: return 0
+                # Xóa dấu chấm và phẩy để tránh nhầm lẫn
+                clean_val = val.replace(',', '').replace('.', '').strip()
+                if clean_val == '' or clean_val.lower() == 'nan': return 0
+                try: return float(clean_val)
+                except: return 0
+            return 0
 
         def fmt_vnd(val):
             try:
-                if pd.isna(val) or val == "": return "-"
-                val = float(val)
-                # Format: 1.000.000 (Dấu chấm phân cách ngàn, không số lẻ)
+                val = float(val) # Đảm bảo là số trước khi format
+                if pd.isna(val): return "-"
                 if val < 0: return "({:,.0f})".format(abs(val)).replace(",", ".")
                 return "{:,.0f}".format(val).replace(",", ".")
-            except: return str(val)
+            except: return "0"
 
         def fmt_date(val):
             try:
@@ -133,8 +135,8 @@ if uploaded_key is not None:
                 if isinstance(val, str):
                     val = pd.to_datetime(val, errors='coerce')
                 if pd.isna(val): return ""
-                return val.strftime('%d/%m/%y') # Format dd/mm/yy
-            except: return str(val)
+                return val.strftime('%d/%m/%y')
+            except: return ""
 
         def convert_df_to_excel(df):
             output = io.BytesIO()
@@ -172,23 +174,25 @@ if uploaded_key is not None:
                 return json.loads(response.text.replace("```json", "").replace("```", "").strip())
             except: return None
 
-        # --- HÀM GỘP DỮ LIỆU (QUAN TRỌNG: ĐÃ THÊM CHỐT CHẶN ÉP KIỂU SỐ) ---
+        # --- HÀM GỘP DỮ LIỆU (FIX BUG: ÉP KIỂU SỐ TRƯỚC KHI CỘNG) ---
         def gop_du_lieu_phong(df_input):
             if df_input.empty: return df_input
             df = df_input.copy()
             
-            # --- CHỐT CHẶN: Ép toàn bộ cột tiền về dạng số thực (float) ---
-            # Bước này đảm bảo 100% không bị lỗi nối chuỗi (13+13=1313)
-            numeric_cols_force = [
+            # --- FIX BUG: Chuyển đổi toàn bộ cột tiền thành số thực (float) ---
+            # Bước này ngăn chặn việc nối chuỗi (String Concatenation)
+            cols_tien = [
                 "Giá HĐ", "Giá", 
                 "TT cho chủ nhà", "Cọc cho chủ nhà", 
                 "KH thanh toán", "KH cọc", 
                 "Công ty", "Cá Nhân", 
                 "SALE THẢO", "SALE NGA", "SALE LINH"
             ]
-            for col in numeric_cols_force:
+            for col in cols_tien:
                 if col in df.columns:
-                    # 'coerce' biến lỗi thành NaN, sau đó fillna(0)
+                    # Xóa ký tự lạ, chuyển về số, lỗi -> 0.0
+                    if df[col].dtype == object:
+                        df[col] = df[col].astype(str).str.replace('.', '').str.replace(',', '')
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
             # Tạo ghi chú
@@ -217,7 +221,7 @@ if uploaded_key is not None:
             agg_rules = {
                 'Ngày ký': 'min', 'Ngày hết HĐ': 'max',
                 'Ngày in': 'min', 'Ngày out': 'max',
-                'Giá HĐ': 'max', 'Giá': 'max', 
+                'Giá HĐ': 'max', 'Giá': 'max', # Giá lấy Max
                 'TT cho chủ nhà': 'sum', 'Cọc cho chủ nhà': 'sum',
                 'KH thanh toán': 'sum', 'KH cọc': 'sum',
                 'Công ty': 'sum', 'Cá Nhân': 'sum',
