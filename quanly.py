@@ -6,14 +6,14 @@ import json
 import re
 import time
 import io
-from PIL import Image
+# from PIL import Image # Bỏ nếu không dùng để tránh lỗi import
 
 # --- THƯ VIỆN KẾT NỐI GOOGLE SHEETS ---
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # ==============================================================================
-# 1. CẤU HÌNH HỆ THỐNG VÀ GIAO DIỆN COMPACT
+# 1. CẤU HÌNH HỆ THỐNG
 # ==============================================================================
 
 st.set_page_config(
@@ -22,34 +22,6 @@ st.set_page_config(
     page_icon="☁️",
     initial_sidebar_state="expanded"
 )
-
-# --- CSS TÙY CHỈNH ĐỂ THU GỌN KHOẢNG TRẮNG ---
-st.markdown("""
-    <style>
-        /* Thu nhỏ lề trên dưới của toàn trang */
-        .block-container {
-            padding-top: 1rem !important;
-            padding-bottom: 1rem !important;
-        }
-        /* Thu nhỏ khoảng cách giữa các phần tử dọc */
-        div[data-testid="stVerticalBlock"] {
-            gap: 0.2rem !important; /* Khoảng cách rất nhỏ */
-        }
-        /* Tối ưu hiển thị bảng dữ liệu */
-        div[data-testid="stDataFrame"] {
-            width: 100%;
-        }
-        /* Tùy chỉnh thanh cuộn cho gọn */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #888; 
-            border-radius: 3px;
-        }
-    </style>
-""", unsafe_allow_html=True)
 
 # Kiểm tra thư viện AI
 try:
@@ -61,7 +33,7 @@ except ImportError:
 # Tên File Google Sheet
 SHEET_NAME = "MT60_DATABASE"
 
-# Danh sách cột chuẩn
+# Danh sách cột chuẩn cho Hợp Đồng
 COLUMNS = [
     "Tòa nhà", "Mã căn", "Toà", "Chủ nhà - sale", "Ngày ký", "Ngày hết HĐ", 
     "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Tên khách thuê", 
@@ -70,13 +42,14 @@ COLUMNS = [
     "Hết hạn khách hàng", "Ráp khách khi hết hạn"
 ]
 
+# Danh sách cột chuẩn cho Chi Phí
 COLUMNS_CP = ["Ngày", "Mã căn", "Loại", "Tiền", "Chỉ số đồng hồ"]
 
 # ==============================================================================
 # 2. KẾT NỐI DỮ LIỆU
 # ==============================================================================
 
-st.title("☁️ MT60 STUDIO - QUẢN LÝ TỔNG QUAN")
+st.title("☁️ MT60 STUDIO - HỆ THỐNG QUẢN LÝ TOÀN DIỆN")
 st.markdown("---")
 
 st.sidebar.header("🔐 Đăng Nhập")
@@ -136,18 +109,38 @@ if uploaded_key is not None:
             try: return float(val)
             except: return 0
 
+        # --- HÀM ĐỊNH DẠNG SỐ (CÓ DẤU CHẤM, KHÔNG SỐ LẺ) ---
         def fmt_vnd(val):
             try:
                 if pd.isna(val) or val == "": return "-"
                 val = float(val)
+                # Định dạng: 1,000 -> replace , thành . -> 1.000
+                # :.0f nghĩa là không lấy số thập phân
                 if val < 0: return "({:,.0f})".format(abs(val)).replace(",", ".")
                 return "{:,.0f}".format(val).replace(",", ".")
+            except: return str(val)
+
+        # --- HÀM ĐỊNH DẠNG NGÀY (dd/mm/yy) ---
+        def fmt_date(val):
+            try:
+                if pd.isna(val) or val == "": return ""
+                if isinstance(val, str):
+                    # Thử parse string sang date rồi format lại
+                    val = pd.to_datetime(val, errors='coerce')
+                return val.strftime('%d/%m/%y') # dd/mm/yy (vd: 31/12/26)
             except: return str(val)
 
         def convert_df_to_excel(df):
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False, sheet_name='Sheet1')
+                # Format lại dữ liệu trước khi xuất Excel để giữ đúng định dạng nhìn thấy
+                df_export = df.copy()
+                for col in df_export.columns:
+                    # Kiểm tra nếu cột là ngày
+                    if pd.api.types.is_datetime64_any_dtype(df_export[col]):
+                        df_export[col] = df_export[col].dt.strftime('%d/%m/%y')
+                
+                df_export.to_excel(writer, index=False, sheet_name='Sheet1')
             return output.getvalue()
         
         def parse_text_message(text):
@@ -249,9 +242,7 @@ if uploaded_key is not None:
             for c in cols_to_numeric:
                 if c in df_main.columns: df_main[c] = df_main[c].apply(to_num)
 
-        # ----------------------------------------------------------------------
-        # SIDEBAR: THÔNG BÁO COMPACT (ĐÃ TỐI ƯU KHOẢNG CÁCH)
-        # ----------------------------------------------------------------------
+        # --- SIDEBAR NOTIFICATION ---
         with st.sidebar:
             st.divider()
             st.header("🔔 Thông Báo")
@@ -265,22 +256,18 @@ if uploaded_key is not None:
                 else:
                     if not df_hd.empty:
                         st.error(f"🔴 {len(df_hd)} Hợp đồng cần xử lý")
-                        # SỬ DỤNG HTML ĐỂ HIỂN THỊ SÁT NHAU
                         for _, r in df_hd.iterrows():
                              days_left = (r['Ngày hết HĐ'] - today).days
                              status_msg = "ĐÃ HẾT HẠN" if days_left < 0 else f"Còn {days_left} ngày"
                              toa_nha = str(r['Toà']).strip() if str(r['Toà']).strip() != '' else "Chưa rõ"
                              phong = str(r['Mã căn']).strip()
-                             
-                             # Code HTML custom: padding thấp, border mờ
-                             html_content = f"""
-                             <div style="border-bottom: 1px solid rgba(49, 51, 63, 0.2); padding-bottom: 4px; margin-bottom: 4px;">
-                                <strong style="color: #FF4B4B;">🏠 {toa_nha} - P.{phong}</strong><br>
-                                <span style="font-size: 0.9em; color: #555;">⚠️ {status_msg} (Hết: {r['Ngày hết HĐ'].strftime('%d/%m')})</span>
-                             </div>
-                             """
-                             st.markdown(html_content, unsafe_allow_html=True)
-
+                             # HTML để giảm khoảng cách
+                             st.markdown(f"""
+                             <div style="margin-bottom: 5px;">
+                                <b>🏠 {toa_nha} - P.{phong}</b><br>
+                                <span style="font-size:0.9em; color:#d9534f;">{status_msg} (Hết: {fmt_date(r['Ngày hết HĐ'])})</span>
+                             </div><hr style="margin: 5px 0;">
+                             """, unsafe_allow_html=True)
                     if not df_kh.empty:
                         st.warning(f"🟡 {len(df_kh)} Khách sắp out")
                         for _, r in df_kh.iterrows(): 
@@ -288,17 +275,13 @@ if uploaded_key is not None:
                             toa_nha = str(r['Toà']).strip() if str(r['Toà']).strip() != '' else "Chưa rõ"
                             phong = str(r['Mã căn']).strip()
                             ten_khach = str(r['Tên khách thuê']).strip()
-                            
-                            # Code HTML custom: padding thấp, border mờ
-                            html_content = f"""
-                             <div style="border-bottom: 1px solid rgba(49, 51, 63, 0.2); padding-bottom: 4px; margin-bottom: 4px;">
-                                <strong style="color: #FFA500;">🚪 {toa_nha} - P.{phong}</strong><br>
-                                <span style="font-size: 0.9em; color: #333;">👤 {ten_khach}</span><br>
-                                <span style="font-size: 0.85em; color: #666;">⏳ Còn {days_left} ngày (Out: {r['Ngày out'].strftime('%d/%m')})</span>
-                             </div>
-                             """
-                            st.markdown(html_content, unsafe_allow_html=True)
-                            
+                            st.markdown(f"""
+                             <div style="margin-bottom: 5px;">
+                                <b>🚪 {toa_nha} - P.{phong}</b><br>
+                                <span style="font-size:0.9em;">👤 {ten_khach}</span><br>
+                                <span style="font-size:0.85em; color:#f0ad4e;">⏳ Còn {days_left} ngày (Out: {fmt_date(r['Ngày out'])})</span>
+                             </div><hr style="margin: 5px 0;">
+                             """, unsafe_allow_html=True)
             st.divider()
             if st.button("🔄 Tải lại dữ liệu", use_container_width=True): 
                 st.cache_data.clear()
@@ -328,6 +311,7 @@ if uploaded_key is not None:
                     key_vis = st.text_input("API Key Vision", type="password")
                     up = st.file_uploader("Upload ảnh HĐ", type=["jpg", "png"])
                     if up and key_vis and st.button("Phân tích Ảnh"):
+                        # from PIL import Image # Đã import ở đầu
                         with st.spinner("AI đang đọc..."): st.session_state['auto'] = parse_image_gemini(key_vis, Image.open(up))
             st.divider()
             av = st.session_state.get('auto', {}) 
@@ -401,11 +385,30 @@ if uploaded_key is not None:
                     df_comb = pd.concat([df_cp, df_up_cp[COLUMNS_CP]], ignore_index=True).drop_duplicates()
                     save_data(df_comb, "CHI_PHI"); time.sleep(1); st.rerun()
                 except Exception as e: st.error(f"Lỗi: {e}")
-            st.dataframe(df_cp, use_container_width=True)
+            
+            # Hiển thị bảng chi phí với định dạng số và ngày
+            df_cp_show = df_cp.copy()
+            df_cp_show["Tiền"] = df_cp_show["Tiền"].apply(fmt_vnd)
+            st.dataframe(
+                df_cp_show, 
+                use_container_width=True,
+                column_config={"Ngày": st.column_config.DateColumn(format="DD/MM/YY")}
+            )
 
         with tabs[3]:
             st.subheader("📋 Dữ Liệu Gốc")
-            st.dataframe(df_main, use_container_width=True)
+            # Format ngày cho bảng gốc
+            df_main_show = df_main.copy()
+            st.dataframe(
+                df_main_show, 
+                use_container_width=True,
+                column_config={
+                    "Ngày ký": st.column_config.DateColumn(format="DD/MM/YY"),
+                    "Ngày hết HĐ": st.column_config.DateColumn(format="DD/MM/YY"),
+                    "Ngày in": st.column_config.DateColumn(format="DD/MM/YYYY"), # Giữ 4 số năm nếu muốn, hoặc đổi YY
+                    "Ngày out": st.column_config.DateColumn(format="DD/MM/YY"),
+                }
+            )
 
         with tabs[4]:
             st.info("Xem thông báo chi tiết ở thanh bên trái (Sidebar).")
@@ -458,8 +461,13 @@ if uploaded_key is not None:
                 c3.metric("Tổng Lợi Nhuận", fmt_vnd(df_calc['Lợi nhuận'].sum()))
                 
                 df_show = df_calc[["Toà", "Mã căn", "Doanh thu", "Giá vốn", "Chi phí Sale", "Lợi nhuận", "Ghi chú"]]
+                
+                # Format bảng hiển thị P&L
+                for c in ["Doanh thu", "Giá vốn", "Chi phí Sale", "Lợi nhuận"]:
+                    df_show[c] = df_show[c].apply(fmt_vnd)
+
                 st.dataframe(
-                    df_show.style.applymap(lambda x: 'color: red' if isinstance(x, (int, float)) and x < 0 else '', subset=['Lợi nhuận']), 
+                    df_show.style.applymap(lambda x: 'color: red' if "(" in str(x) else '', subset=['Lợi nhuận']), 
                     use_container_width=True, 
                     column_config={"Ghi chú": st.column_config.TextColumn(width=500)}
                 )
@@ -487,8 +495,12 @@ if uploaded_key is not None:
                 c2.metric("Tổng Chi", fmt_vnd(df_cf['Chi'].sum()))
                 c3.metric("Dòng Tiền Ròng", fmt_vnd(df_cf['Ròng'].sum()))
                 
+                df_cf_show = df_cf[["Toà", "Mã căn", "Thu", "Chi", "Chi phí VH", "Ròng", "Ghi chú"]].copy()
+                for c in ["Thu", "Chi", "Chi phí VH", "Ròng"]:
+                    df_cf_show[c] = df_cf_show[c].apply(fmt_vnd)
+
                 st.dataframe(
-                    df_cf[["Toà", "Mã căn", "Thu", "Chi", "Chi phí VH", "Ròng", "Ghi chú"]].style.applymap(lambda x: 'color: red' if isinstance(x, (int, float)) and x < 0 else '', subset=['Ròng']), 
+                    df_cf_show.style.applymap(lambda x: 'color: red' if "(" in str(x) else '', subset=['Ròng']), 
                     use_container_width=True, 
                     column_config={"Ghi chú": st.column_config.TextColumn(width=500)}
                 )
