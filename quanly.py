@@ -56,7 +56,7 @@ COLS_MONEY = [
 ]
 
 # ==============================================================================
-# 2. KẾT NỐI DỮ LIỆU THÔNG MINH (ĐÃ FIX LỖI ĐỌC FILE JSON AN TOÀN)
+# 2. KẾT NỐI DỮ LIỆU THÔNG MINH (TỰ ĐỘNG VÁ LỖI CHỮ KÝ JWT)
 # ==============================================================================
 
 st.title("☁️ MT60 STUDIO - QUẢN LÝ TỔNG QUAN")
@@ -68,22 +68,26 @@ st.sidebar.header("🔐 Trạng thái hệ thống")
 def connect_google_sheet(uploaded_file=None):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
-        # Cách 1: Đọc trực tiếp từ file (An toàn tuyệt đối, dùng hàm chuẩn của Google)
+        creds_dict = None
+        
+        # 1. Đọc file key.json (nếu có)
         if os.path.exists("key.json"):
-            creds = ServiceAccountCredentials.from_json_keyfile_name("key.json", scope)
-            client = gspread.authorize(creds)
-            return client.open(SHEET_NAME)
-            
-        # Cách 2: Nếu người dùng upload file từ giao diện
+            with open("key.json", "r", encoding="utf-8") as f:
+                creds_dict = json.load(f)
+        # 2. Hoặc đọc file do user upload
         elif uploaded_file is not None:
             file_content = uploaded_file.read().decode("utf-8")
             creds_dict = json.loads(file_content)
+            
+        if creds_dict:
+            # ---> BỘ PHẬN VÁ LỖI CHỮ KÝ <---
             if 'private_key' in creds_dict:
-                creds_dict['private_key'] = creds_dict['private_key'].replace('\\n', '\n')
+                # Ép tất cả các dạng lỗi của dấu ngắt dòng về đúng 1 chuẩn \n duy nhất
+                creds_dict['private_key'] = creds_dict['private_key'].replace('\\\\n', '\n').replace('\\n', '\n')
+            
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             client = gspread.authorize(creds)
             return client.open(SHEET_NAME)
-            
         return None
     except Exception as e:
         st.error(f"❌ Lỗi kết nối. Vui lòng kiểm tra lại file JSON của bạn.")
@@ -127,7 +131,6 @@ if sh:
             st.toast("✅ Đã lưu thành công!", icon="☁️")
         except Exception as e: st.error(f"❌ Lỗi: {e}")
 
-    # --- BỘ LỌC ÉP KIỂU SỐ (NGĂN CHẶN LỖI NHÂN 10 LẦN) ---
     def clean_money(val):
         if pd.isna(val) or val == "": return 0.0
         if isinstance(val, (int, float)): return float(val)
@@ -139,7 +142,6 @@ if sh:
         try: return float(s)
         except: return 0.0
 
-    # --- HÀM FORMAT HIỂN THỊ CHỐNG LỖI 2^53 ---
     def fmt_vnd(val):
         try:
             val = float(val)
@@ -166,7 +168,6 @@ if sh:
             df_export.to_excel(writer, index=False, sheet_name='Sheet1')
         return output.getvalue()
     
-    # --- HÀM GỘP DỮ LIỆU ---
     def gop_du_lieu_phong(df_input):
         if df_input.empty: return df_input
         df = df_input.copy()
@@ -222,7 +223,6 @@ if sh:
         df_cp = pd.DataFrame(columns=COLUMNS_CP)
     else:
         df_cp.columns = df_cp.columns.str.strip()
-        # CHỐT CHẶN CHỐNG LỖI MERGE (MÀN HÌNH ĐỎ)
         if "Mã căn" in df_cp.columns: 
             df_cp["Mã căn"] = df_cp["Mã căn"].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         if "Ngày" in df_cp.columns: df_cp["Ngày"] = pd.to_datetime(df_cp["Ngày"], errors='coerce')
@@ -230,7 +230,6 @@ if sh:
 
     if not df_main.empty:
         df_main.columns = df_main.columns.str.strip()
-        # CHỐT CHẶN CHỐNG LỖI MERGE (MÀN HÌNH ĐỎ)
         if "Mã căn" in df_main.columns: 
             df_main["Mã căn"] = df_main["Mã căn"].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         for c in ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]:
