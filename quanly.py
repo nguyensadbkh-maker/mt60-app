@@ -6,14 +6,13 @@ import json
 import re
 import time
 import io
-# from PIL import Image # Giữ dòng này nếu bạn cần dùng tính năng đọc ảnh
 
 # --- THƯ VIỆN KẾT NỐI GOOGLE SHEETS ---
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # ==============================================================================
-# 1. CẤU HÌNH HỆ THỐNG
+# 1. CẤU HÌNH HỆ THỐNG VÀ GIAO DIỆN
 # ==============================================================================
 
 st.set_page_config(
@@ -112,21 +111,28 @@ if uploaded_key is not None:
                 st.toast("✅ Đã lưu thành công!", icon="☁️")
             except Exception as e: st.error(f"❌ Lỗi: {e}")
 
-        # --- HÀM LÀM SẠCH SỐ TIỀN MẠNH MẼ ---
+        # --- HÀM LÀM SẠCH SỐ TIỀN (ĐÃ FIX LỖI NHÂN 10 LẦN) ---
         def clean_money(val):
+            """Xử lý mọi loại định dạng về số float chuẩn"""
             if pd.isna(val) or val == "": return 0.0
+            
+            # 1. Nếu Google Sheet trả về chuẩn là số (Int/Float), GIỮ NGUYÊN
             if isinstance(val, (int, float)): return float(val)
+            
+            # 2. Nếu là chuỗi văn bản (Do người dùng gõ tay có dấu phẩy)
             s = str(val).strip()
-            # Xóa các phần thập phân ảo
-            if s.endswith('.0'): s = s[:-2]
-            if s.endswith(',0'): s = s[:-2]
-            # Bỏ dấu phân cách hàng ngàn
+            if s == "": return 0.0
+            
+            # Xóa dấu phân cách phần ngàn (cả chấm và phẩy tùy thói quen)
             s = s.replace('.', '').replace(',', '')
-            # Xóa các ký tự chữ cái, chỉ giữ lại số và dấu trừ
+            
+            # Xóa các ký tự chữ cái dư thừa, chỉ giữ số và dấu trừ
             s = re.sub(r'[^\d-]', '', s)
+            
             try: return float(s)
             except: return 0.0
 
+        # --- HÀM ĐỊNH DẠNG HIỂN THỊ TRÊN WEB ---
         def fmt_vnd(val):
             try:
                 val = float(val)
@@ -157,8 +163,8 @@ if uploaded_key is not None:
         def gop_du_lieu_phong(df_input):
             if df_input.empty: return df_input
             df = df_input.copy()
-            df.columns = df.columns.str.strip()
-
+            
+            # Tạo ghi chú chi tiết
             def tao_mo_ta_dong(row):
                 details = []
                 k, h = fmt_date(row.get('Ngày ký')), fmt_date(row.get('Ngày hết HĐ'))
@@ -178,6 +184,7 @@ if uploaded_key is not None:
 
             df['_chi_tiet_nhap'] = df.apply(tao_mo_ta_dong, axis=1)
 
+            # Quy tắc gộp (Các cột số đã được xử lý clean_money từ trước rồi nên rất an toàn)
             agg_rules = {
                 'Ngày ký': 'min', 'Ngày hết HĐ': 'max',
                 'Ngày in': 'min', 'Ngày out': 'max',
@@ -200,7 +207,7 @@ if uploaded_key is not None:
             return df_grouped
 
         # ==============================================================================
-        # 4. TẢI VÀ CHUẨN HÓA DỮ LIỆU ĐẦU VÀO (FIX BUG MERGE ERROR)
+        # 4. TẢI VÀ CHUẨN HÓA DỮ LIỆU ĐẦU VÀO (FIX LỖI MERGE)
         # ==============================================================================
         df_main = load_data("HOP_DONG")
         df_cp = load_data("CHI_PHI")
@@ -210,21 +217,24 @@ if uploaded_key is not None:
             df_cp = pd.DataFrame(columns=COLUMNS_CP)
         else:
             df_cp.columns = df_cp.columns.str.strip()
-            # Bắt buộc chuyển Mã căn thành String
-            if "Mã căn" in df_cp.columns: df_cp["Mã căn"] = df_cp["Mã căn"].astype(str).str.strip()
+            # FIX LỖI MÀN HÌNH ĐỎ: Ép buộc Mã Căn thành dạng Chuỗi (Text) và bỏ đuôi .0 nếu có
+            if "Mã căn" in df_cp.columns: 
+                df_cp["Mã căn"] = df_cp["Mã căn"].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            
             if "Ngày" in df_cp.columns: df_cp["Ngày"] = pd.to_datetime(df_cp["Ngày"], errors='coerce')
             if "Tiền" in df_cp.columns: df_cp["Tiền"] = df_cp["Tiền"].apply(clean_money)
 
         # --- Clean Hợp Đồng ---
         if not df_main.empty:
             df_main.columns = df_main.columns.str.strip()
-            # Bắt buộc chuyển Mã căn thành String
-            if "Mã căn" in df_main.columns: df_main["Mã căn"] = df_main["Mã căn"].astype(str).str.strip()
+            # FIX LỖI MÀN HÌNH ĐỎ: Ép buộc Mã Căn thành dạng Chuỗi (Text)
+            if "Mã căn" in df_main.columns: 
+                df_main["Mã căn"] = df_main["Mã căn"].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             
             for c in ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]:
                 if c in df_main.columns: df_main[c] = pd.to_datetime(df_main[c], errors='coerce')
             
-            # Làm sạch tiền tệ
+            # Ép kiểu tiền tệ ngay khi vừa tải về
             for c in COLS_MONEY:
                 if c in df_main.columns: df_main[c] = df_main[c].apply(clean_money)
 
@@ -300,7 +310,7 @@ if uploaded_key is not None:
                 with c31: ten_khach = st.text_input("Tên khách", value=str(av.get("ten_khach","")))
                 with c32: gia_hd = st.number_input("Giá HĐ (Gốc)", step=100000)
                 with c33: kh_coc = st.number_input("Khách cọc", step=100000)
-                with c34: tt_chu_nha = st.number_input("TT cho chủ nhà", step=100000) # Đổi thành nhập số
+                with c34: tt_chu_nha = st.number_input("TT cho chủ nhà", step=100000)
                 c41, c42, c43, c44 = st.columns(4)
                 with c41: sale_thao = st.number_input("Sale Thảo", step=50000)
                 with c42: sale_nga = st.number_input("Sale Nga", step=50000)
@@ -336,7 +346,7 @@ if uploaded_key is not None:
                 loai = c3.selectbox("Loại", ["Điện", "Nước", "Net", "Dọn dẹp", "Khác"])
                 tien = c4.number_input("Tiền", step=10000.0)
                 if st.form_submit_button("Lưu"):
-                    new = pd.DataFrame([{"Mã căn": can, "Loại": loai, "Tiền": tien, "Ngày": pd.to_datetime(d), "Chỉ số đồng hồ": ""}])
+                    new = pd.DataFrame([{"Mã căn": str(can).strip(), "Loại": loai, "Tiền": tien, "Ngày": pd.to_datetime(d), "Chỉ số đồng hồ": ""}])
                     save_data(pd.concat([df_cp, new], ignore_index=True), "CHI_PHI"); time.sleep(1); st.rerun()
             
             df_cp_show = df_cp.copy()
@@ -348,6 +358,7 @@ if uploaded_key is not None:
             st.info("💡 Bạn có thể sửa trực tiếp trên bảng và bấm Lưu.")
             
             df_edit = df_main.copy()
+            # Hiển thị số để người dùng dễ nhìn, nhưng khi lưu sẽ gỡ ra
             for c in COLS_MONEY:
                  if c in df_edit.columns: df_edit[c] = df_edit[c].apply(lambda x: "{:,.0f}".format(x).replace(",", "."))
             
@@ -418,11 +429,7 @@ if uploaded_key is not None:
                 df_cf['Chi'] = df_cf['TT cho chủ nhà'] + df_cf['Cọc cho chủ nhà'] + df_cf['SALE THẢO'] + df_cf['SALE NGA'] + df_cf['SALE LINH'] + df_cf['Công ty'] + df_cf['Cá Nhân']
                 
                 if not df_cp.empty:
-                    # FIX BUG MERGE: Đảm bảo Mã căn là String trước khi gộp
                     cp_agg = df_cp.groupby('Mã căn')['Tiền'].sum().reset_index().rename(columns={'Tiền': 'Chi phí VH'})
-                    cp_agg['Mã căn'] = cp_agg['Mã căn'].astype(str).str.strip()
-                    df_cf['Mã căn'] = df_cf['Mã căn'].astype(str).str.strip()
-                    
                     df_cf = pd.merge(df_cf, cp_agg, on='Mã căn', how='left').fillna(0)
                     df_cf['Chi'] += df_cf['Chi phí VH']
                 else: df_cf['Chi phí VH'] = 0
@@ -479,7 +486,6 @@ if uploaded_key is not None:
                     for c in ["Doanh thu tháng", "Chi phí thuê (Vốn)", "Thuế phải đóng", "Lợi nhuận ròng"]: df_display[c] = df_display[c].apply(fmt_vnd)
                     st.dataframe(df_display.style.set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'}), use_container_width=True, column_config={"Ghi chú": st.column_config.TextColumn(width=300)})
                 else: st.warning(f"Không có dữ liệu trong tháng {q_month}/{q_year}")
-            else: st.info("Chưa có dữ liệu.")
 
 else:
     st.warning("👈 Vui lòng tải file **JSON Chìa Khóa** từ Google lên đây để bắt đầu.")
