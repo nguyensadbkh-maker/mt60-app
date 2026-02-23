@@ -40,30 +40,6 @@ except ImportError:
 
 SHEET_NAME = "MT60_DATABASE"
 
-# ==============================================================================
-# 2. TÍCH HỢP KHÓA JSON BẢO MẬT VÀO ĐÂY
-# ==============================================================================
-# BẠN HÃY DÁN NỘI DUNG FILE JSON VÀO GIỮA 3 DẤU NGOẶC KÉP BÊN DƯỚI:
-
-JSON_KEY_CONTENT = """
-{
-  "type": "service_account",
-  "project_id": "khach-san-trinh",
-  "private_key_id": "46c3cf7de20fb9857dc9a28233a61e695c70fd53",
-  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC6efH0ylNox9m3\n6PLjGNcXE8iyRVkNfS4vbqw9L5ejQg4JokcPjyG0pcKPiaeCWmYM/4p4MbUkscSY\njIQeMS/ppaBvAeUHUMR2KE4fSPg0LNDhNQ/qH9s8uqJSxVxQaVI1YRca9Ie4zbk7\nWvuU7JMiN71c8KLe9Ag0nkCNkJynQR6xRZWcJaK3QVHVbvTdDQBA5jdZGYHxrEGZ\neC2zLA8HjsjRTflRQmb+tOOhqFpWRH5Wt5+EFqxnvbxvce3cLcLHBbnHoLXbc6dc\ncpdj+UTM0a+ch9wCYCynwbVYWPHlG9pVZsU8wTRICOP6oLBS2UId4hnmcTHITjgs\nEAip3DWVAgMBAAECggEACWOjewEG+HMmSLwkzVTOW7NGJd0XsfYCxyZKQN3Dw6zL\nRSaTxQ+evFhOTBORHh9MHSJux++Eyz9c1+uB/tKDiD8BLXsJxk0Fn1zB1jxtLD9c\nwxd8tialeiYm5IZbHWdi2XI1Nh5oM7YUD2OHiwTrFvbPL5NO4sKkeSBwvVAHOzqW\nRX2uUFo8JcrZbdn6GULErYFnViJCSwVy+iNdvGJi85jDUmYA392V/XOqvzqsH//n\niI+bJvwktwaPUR/Ua8E0rw2nk3D6EDCyt+pKOYHBf3d9vr4AhamW5yJ3qinWUuut\nGKl8+3paF3SjTTPh/a2bsIhmwDdNiBK9+4qrpQsgEQKBgQDq3WyuLYwOiVrHx8KR\nwtBhmkXXboCj/wnsz4EefeaeSA8U/ZD4HZlDp69jDuaGOqdMoxeyjwPKInyLEdd2\nr5Bnqsszwif0GzTcVT8i6kp5RzrNBmJ38f/+wqMyBFuYI5hB56c66zQZXx5WEg7t\nAzHwC2VRNVpGevu1mm8xEfyGXQKBgQDLQctXvSvhk2nt22Vn1E8dQ/pDU0vjRCAt\nsebURFM8ici8sow5hZnQeA7pqboblY3X/xKzfVUbxRJcH6UGmYA3cTrMRndpad2r\noBwhph/hRAJyISzvNApvjH6Vy3miXQkR57kGfMnysx9uSAEClehAioxAhHOBFEeu\n73LzxuEImQKBgQC/JNAjfWwkFINuXlQqvstK8/xtVUCat6EDOunRwBNltC2aHrfS\nRnyKxDkIPIM+sROhWoaZyq0B4ElOAYpCzKWQyT6xdA2CLHY776D/sIBF7cOcQtr2\n1VxLoWqh9Uv6KNXspTTDzdJL587Pq8i7+kK1IwElM2+yNrsOVI6z9/h1/QKBgQDF\n6DZaI/PKHIMT+n/ubSbrU/kl/MDzdK3wUDx1imGRnIc8VI18pL1z4rKCiaSQnzoR\nimdnJS3tcCHEWXuRxXy2fyXFKQe0OESCi89YZCy+Zj4LaooaDw3qN1459HlmwjfG\nm13pFzB7hDWiZ7G0FsqhrUWKvGzKzjhN+RBwlMEgYQKBgFlIv95lKwNPDNojpzD0\nqGZzu32M0REn3T217gGvQLumjHLHVaGrQpqo2/WMAi83djaBNi2oc5pdeIASpDN2\nnESyYaYyXKocdh9nlrmFxwcGTYdDLaUVs4vSe22vmtQx+l6REokMHNWE7tQ3MxJg\n1aOMZw4F0O1SGpTcSFxf9XfT\n-----END PRIVATE KEY-----\n",
-  "client_email": "kh-ch-s-n-trinh@khach-san-trinh.iam.gserviceaccount.com",
-  "client_id": "114568060735361082884",
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/kh-ch-s-n-trinh%40khach-san-trinh.iam.gserviceaccount.com",
-  "universe_domain": "googleapis.com"
-}
-
-"""
-
-# ==============================================================================
-
 COLUMNS = [
     "Tòa nhà", "Mã căn", "Toà", "Chủ nhà - sale", "Ngày ký", "Ngày hết HĐ", 
     "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Tên khách thuê", 
@@ -80,7 +56,7 @@ COLS_MONEY = [
 ]
 
 # ==============================================================================
-# 3. KẾT NỐI DỮ LIỆU TỰ ĐỘNG
+# 2. KẾT NỐI DỮ LIỆU TỰ ĐỘNG THÔNG MINH
 # ==============================================================================
 
 st.title("☁️ MT60 STUDIO - QUẢN LÝ TỔNG QUAN")
@@ -89,31 +65,50 @@ st.markdown("---")
 st.sidebar.header("🔐 Trạng thái hệ thống")
 
 @st.cache_resource
-def connect_google_sheet():
+def connect_google_sheet(uploaded_file=None):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
-        # Phân tích nội dung JSON đã nhúng
-        creds_dict = json.loads(JSON_KEY_CONTENT.strip())
-        if 'private_key' in creds_dict:
-             creds_dict['private_key'] = creds_dict['private_key'].replace('\\n', '\n')
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        client = gspread.authorize(creds)
-        return client.open(SHEET_NAME)
+        creds_dict = None
+        
+        # 1. Cố gắng đọc file key.json nếu có sẵn trong thư mục
+        if os.path.exists("key.json"):
+            with open("key.json", "r", encoding="utf-8") as f:
+                creds_dict = json.load(f)
+        # 2. Nếu không có file tự động, dùng file người dùng upload
+        elif uploaded_file is not None:
+            file_content = uploaded_file.read().decode("utf-8")
+            creds_dict = json.loads(file_content)
+            
+        if creds_dict:
+            if 'private_key' in creds_dict:
+                creds_dict['private_key'] = creds_dict['private_key'].replace('\\n', '\n')
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            client = gspread.authorize(creds)
+            return client.open(SHEET_NAME)
+        return None
     except Exception as e:
-        st.error("❌ Lỗi kết nối Google Sheet! Vui lòng kiểm tra lại đoạn mã JSON đã dán đúng chưa.")
-        st.error(f"Chi tiết lỗi: {e}")
+        st.error(f"❌ Lỗi kết nối: {e}")
         return None
 
-# Thực hiện kết nối tự động ngay khi mở app
-with st.spinner("Đang kết nối hệ thống..."):
-    sh = connect_google_sheet()
+# --- KIỂM TRA ĐĂNG NHẬP ---
+# Nếu tìm thấy key.json, nó sẽ tự kết nối. Nếu không, nó sẽ hiện nút upload.
+sh = None
+if os.path.exists("key.json"):
+    with st.spinner("Đang tự động kết nối bằng file key.json..."):
+        sh = connect_google_sheet()
+else:
+    uploaded_key = st.sidebar.file_uploader("Không tìm thấy key.json. Vui lòng chọn file JSON để mở khóa", type=['json'])
+    if uploaded_key:
+        uploaded_key.seek(0)
+        with st.spinner("Đang kết nối..."):
+            sh = connect_google_sheet(uploaded_key)
 
 # ==============================================================================
-# 4. XỬ LÝ LOGIC CHÍNH
+# 3. XỬ LÝ LOGIC CHÍNH
 # ==============================================================================
 
 if sh:
-    st.sidebar.success("✅ Đã kết nối tự động!")
+    st.sidebar.success("✅ Đã kết nối dữ liệu!")
     
     def load_data(tab_name):
         try:
@@ -133,6 +128,7 @@ if sh:
             st.toast("✅ Đã lưu thành công!", icon="☁️")
         except Exception as e: st.error(f"❌ Lỗi: {e}")
 
+    # --- HÀM LÀM SẠCH SỐ TIỀN MẠNH MẼ ---
     def clean_money(val):
         if pd.isna(val) or val == "": return 0.0
         if isinstance(val, (int, float)): return float(val)
@@ -170,6 +166,7 @@ if sh:
             df_export.to_excel(writer, index=False, sheet_name='Sheet1')
         return output.getvalue()
     
+    # --- HÀM GỘP DỮ LIỆU ---
     def gop_du_lieu_phong(df_input):
         if df_input.empty: return df_input
         df = df_input.copy()
@@ -216,7 +213,7 @@ if sh:
         return df_grouped
 
     # ==============================================================================
-    # TẢI VÀ CHUẨN HÓA DỮ LIỆU ĐẦU VÀO
+    # 4. TẢI VÀ CHUẨN HÓA DỮ LIỆU ĐẦU VÀO
     # ==============================================================================
     df_main = load_data("HOP_DONG")
     df_cp = load_data("CHI_PHI")
@@ -225,6 +222,7 @@ if sh:
         df_cp = pd.DataFrame(columns=COLUMNS_CP)
     else:
         df_cp.columns = df_cp.columns.str.strip()
+        # CHỐT CHẶN CHỐNG LỖI MERGE (MÀN HÌNH ĐỎ)
         if "Mã căn" in df_cp.columns: 
             df_cp["Mã căn"] = df_cp["Mã căn"].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         if "Ngày" in df_cp.columns: df_cp["Ngày"] = pd.to_datetime(df_cp["Ngày"], errors='coerce')
@@ -232,6 +230,7 @@ if sh:
 
     if not df_main.empty:
         df_main.columns = df_main.columns.str.strip()
+        # CHỐT CHẶN CHỐNG LỖI MERGE (MÀN HÌNH ĐỎ)
         if "Mã căn" in df_main.columns: 
             df_main["Mã căn"] = df_main["Mã căn"].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         for c in ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]:
@@ -240,7 +239,7 @@ if sh:
             if c in df_main.columns: df_main[c] = df_main[c].apply(clean_money)
 
     # ==============================================================================
-    # SIDEBAR: THÔNG BÁO TÓM TẮT
+    # 5. SIDEBAR: THÔNG BÁO TÓM TẮT
     # ==============================================================================
     with st.sidebar:
         st.divider()
@@ -277,7 +276,7 @@ if sh:
     DANH_SACH_NHA = { "Tòa A": ["A101"], "Tòa B": ["B101"], "Khác": [] }
 
     # ==============================================================================
-    # GIAO DIỆN CHÍNH (TABS)
+    # 6. GIAO DIỆN CHÍNH (TABS)
     # ==============================================================================
     tabs = st.tabs([
         "✍️ Nhập Liệu", "📥 Upload Excel", "💸 Chi Phí Nội Bộ", 
@@ -352,7 +351,7 @@ if sh:
 
     with tabs[3]:
         st.subheader("📋 Dữ Liệu Gốc")
-        st.info("💡 Sửa trực tiếp trên bảng và bấm Lưu để cập nhật lỗi dữ liệu.")
+        st.info("💡 Sửa trực tiếp trên bảng và bấm Lưu để cập nhật số liệu chuẩn xác lên mây.")
         df_edit = df_main.copy()
         for c in COLS_MONEY:
              if c in df_edit.columns: df_edit[c] = df_edit[c].apply(lambda x: "{:,.0f}".format(x).replace(",", "."))
