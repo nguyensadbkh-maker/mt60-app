@@ -59,6 +59,10 @@ COLS_MONEY = [
 # 2. KẾT NỐI DỮ LIỆU THÔNG MINH (TỰ ĐỘNG VÁ LỖI CHỮ KÝ JWT)
 # ==============================================================================
 
+# ==============================================================================
+# 2. KẾT NỐI DỮ LIỆU THÔNG MINH (BẢO MẬT STREAMLIT SECRETS)
+# ==============================================================================
+
 st.title("☁️ MT60 STUDIO - QUẢN LÝ TỔNG QUAN")
 st.markdown("---")
 
@@ -70,19 +74,24 @@ def connect_google_sheet(uploaded_file=None):
     try:
         creds_dict = None
         
-        # 1. Đọc file key.json (nếu có)
-        if os.path.exists("key.json"):
+        # ƯU TIÊN 1: Đọc từ Két sắt bảo mật của Streamlit (dạng chuỗi văn bản)
+        if "google_credentials" in st.secrets:
+            # Chuyển chuỗi văn bản TOML thành JSON
+            creds_dict = json.loads(st.secrets["google_credentials"])
+            
+        # ƯU TIÊN 2: Đọc file key.json (Nếu bạn chạy thử trên máy tính cá nhân)
+        elif os.path.exists("key.json"):
             with open("key.json", "r", encoding="utf-8") as f:
                 creds_dict = json.load(f)
-        # 2. Hoặc đọc file do user upload
+                
+        # ƯU TIÊN 3: Nếu người dùng upload file từ giao diện
         elif uploaded_file is not None:
             file_content = uploaded_file.read().decode("utf-8")
             creds_dict = json.loads(file_content)
             
         if creds_dict:
-            # ---> BỘ PHẬN VÁ LỖI CHỮ KÝ <---
+            # Sửa lỗi mất dấu xuống dòng của file JSON (nguyên nhân gây lỗi JWT)
             if 'private_key' in creds_dict:
-                # Ép tất cả các dạng lỗi của dấu ngắt dòng về đúng 1 chuẩn \n duy nhất
                 creds_dict['private_key'] = creds_dict['private_key'].replace('\\\\n', '\n').replace('\\n', '\n')
             
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
@@ -90,17 +99,17 @@ def connect_google_sheet(uploaded_file=None):
             return client.open(SHEET_NAME)
         return None
     except Exception as e:
-        st.error(f"❌ Lỗi kết nối. Vui lòng kiểm tra lại file JSON của bạn.")
+        st.error(f"❌ Lỗi kết nối. Vui lòng kiểm tra lại file JSON hoặc Streamlit Secrets.")
         st.error(f"Chi tiết kỹ thuật: {e}")
         return None
 
 # --- Khởi tạo kết nối ---
 sh = None
-if os.path.exists("key.json"):
-    with st.spinner("Đang tự động kết nối bằng file key.json..."):
+if "google_credentials" in st.secrets or os.path.exists("key.json"):
+    with st.spinner("Đang tự động kết nối hệ thống..."):
         sh = connect_google_sheet()
 else:
-    uploaded_key = st.sidebar.file_uploader("Không tìm thấy file key.json. Vui lòng Upload file JSON gốc:", type=['json'])
+    uploaded_key = st.sidebar.file_uploader("Vui lòng Upload file JSON gốc:", type=['json'])
     if uploaded_key:
         uploaded_key.seek(0)
         with st.spinner("Đang kết nối..."):
