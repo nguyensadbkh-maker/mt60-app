@@ -253,10 +253,23 @@ if sh:
         if not df_main.empty:
             df_alert_base = gop_du_lieu_phong(df_main)
             
+            # Cảnh báo hết HĐ chủ nhà
             df_hd = df_alert_base[(df_alert_base['Ngày hết HĐ'].notna()) & ((df_alert_base['Ngày hết HĐ'] - today).dt.days.between(-999, 30))]
+            
+            # Cảnh báo khách sắp ra
             df_kh = df_alert_base[(df_alert_base['Ngày out'].notna()) & ((df_alert_base['Ngày out'] - today).dt.days.between(0, 7))]
 
-            if df_hd.empty and df_kh.empty: st.success("✅ Ổn định")
+            # BỘ LỌC PHÒNG TRỐNG: Không có ngày In/Out hợp lệ bao trùm ngày hôm nay
+            def is_empty_room(row):
+                if pd.notna(row['Ngày in']) and pd.notna(row['Ngày out']):
+                    if row['Ngày in'] <= today <= row['Ngày out']:
+                        return False # Đang có khách
+                return True # Trống
+            
+            df_trong = df_alert_base[df_alert_base.apply(is_empty_room, axis=1)]
+
+            if df_hd.empty and df_kh.empty and df_trong.empty: 
+                st.success("✅ Ổn định. Lấp đầy 100%.")
             else:
                 if not df_hd.empty:
                     st.error(f"🔴 {len(df_hd)} HĐ cần xử lý")
@@ -265,12 +278,19 @@ if sh:
                          status_msg = "ĐÃ HẾT HẠN" if days_left < 0 else f"Còn {days_left} ngày"
                          toa_nha = str(r.get('Toà', 'Chưa rõ')).strip()
                          st.markdown(f"**🏠 P.{r['Mã căn']}** ({toa_nha}) - {status_msg}")
+                
                 if not df_kh.empty:
                     st.warning(f"🟡 {len(df_kh)} Khách sắp out")
                     for _, r in df_kh.iterrows(): 
                         days_left = (r['Ngày out'] - today).days
                         toa_nha = str(r.get('Toà', 'Chưa rõ')).strip()
                         st.markdown(f"**🚪 P.{r['Mã căn']}** ({toa_nha}) - Còn {days_left} ngày")
+
+                if not df_trong.empty:
+                    st.info(f"🔵 {len(df_trong)} Phòng đang trống")
+                    for _, r in df_trong.iterrows(): 
+                        toa_nha = str(r.get('Toà', 'Chưa rõ')).strip()
+                        st.markdown(f"**⚪ P.{r['Mã căn']}** ({toa_nha})")
         
         st.info("👉 Vào Tab **Cảnh Báo** để xem chi tiết và lấy mẫu tin nhắn.")
         st.divider()
@@ -447,6 +467,33 @@ if sh:
                         st.markdown("📝 **Mẫu tin nhắn nhắc khách:**")
                         st.code(f"Chào {khach},\nPhòng {row['Mã căn']} tòa {toa_nha} của bạn sẽ đến hạn trả phòng vào ngày {fmt_date(row['Ngày out'])}.\nBạn vui lòng chuẩn bị dọn dẹp và liên hệ BQL để chốt số điện nước, làm thủ tục bàn giao và hoàn cọc ({fmt_vnd(coc)}) nhé. Cảm ơn bạn!", language="text")
 
+            st.divider()
+
+            st.write("#### 3️⃣ Danh sách Phòng Trống (Chưa có khách thuê)")
+            def check_empty_tab(row):
+                if pd.notna(row['Ngày in']) and pd.notna(row['Ngày out']):
+                    if row['Ngày in'] <= today <= row['Ngày out']:
+                        return False # Đang có khách
+                return True # Trống
+
+            df_warning_trong = df_alert_tab[df_alert_tab.apply(check_empty_tab, axis=1)]
+            
+            if df_warning_trong.empty:
+                st.success("✅ Đã lấp đầy 100%, không có phòng trống.")
+            else:
+                for idx, row in df_warning_trong.iterrows():
+                    toa_nha = str(row.get('Toà', 'Chưa rõ')).strip()
+                    chu_nha = str(row.get('Chủ nhà - sale', 'Chưa rõ'))
+                    gia_hd = row.get('Giá HĐ', 0)
+                    
+                    with st.expander(f"⚪ Tòa {toa_nha} - P.{row['Mã căn']} (Đang Trống)"):
+                        c1, c2 = st.columns(2)
+                        c1.markdown(f"**Chủ nhà/Sale:** {chu_nha}")
+                        c2.markdown(f"**Giá vốn (HĐ chủ):** {fmt_vnd(gia_hd)}")
+                        
+                        st.markdown("📝 **Mẫu tin nhắn đẩy Sale:**")
+                        st.code(f"Phòng {row['Mã căn']} tòa {toa_nha} hiện đang trống. Giá gốc chủ nhà là {fmt_vnd(gia_hd)}. ACE có khách chốt ngay giúp quản lý nhé!", language="text")
+
     # --- TAB 5: QUẢN LÝ CHI PHÍ HỢP ĐỒNG (CÓ BẢNG TỔNG HỢP TRÊN ĐẦU) ---
     with tabs[5]:
         st.subheader("🏢 Quản Lý Chi Phí Hợp Đồng (Trả Chủ Nhà)")
@@ -590,7 +637,6 @@ if sh:
                 df_view_ct = df_view_ct.drop_duplicates(subset=['Toà', 'Mã căn', 'Thời hạn cho thuê'], keep='first')
                 df_view_ct = df_view_ct.sort_values(by=['Toà', 'Mã căn'])
 
-                # TÁCH 2 NHÓM TỔNG HỢP DỰA TRÊN TRẠNG THÁI HĐ CHỦ
                 df_da_co = df_view_ct[df_view_ct['Trạng thái HĐ Chủ'] == "Đã có HĐ Chủ"]
                 df_trong = df_view_ct[df_view_ct['Trạng thái HĐ Chủ'] == "Trống HĐ Gốc"]
 
@@ -607,7 +653,7 @@ if sh:
                 n1.metric("Tổng Giá Thuê", fmt_vnd(df_trong['Giá'].sum()))
                 n2.metric("Tổng KH Thanh Toán", fmt_vnd(df_trong['KH thanh toán'].sum()))
                 n3.metric("Tổng KH Cọc", fmt_vnd(df_trong['KH cọc'].sum()))
-                n4.metric("Tổng Giá HĐ Chủ", fmt_vnd(df_trong['Giá HĐ Chủ'].sum())) # Sẽ bằng 0
+                n4.metric("Tổng Giá HĐ Chủ", fmt_vnd(df_trong['Giá HĐ Chủ'].sum())) 
                 n5.metric("Tổng Lợi Nhuận Ròng", fmt_vnd(df_trong['Lợi nhuận ròng'].sum()))
                 st.markdown("---")
 
