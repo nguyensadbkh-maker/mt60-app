@@ -502,7 +502,6 @@ if sh:
                 df_view_hd = df_view_hd.drop_duplicates(subset=['Toà', 'Mã căn', 'Thời hạn HĐ'], keep='first')
                 df_view_hd = df_view_hd.sort_values(by=['Toà', 'Mã căn'])
 
-                # HIỂN THỊ TỔNG HỢP METRICS CHO TAB CP HỢP ĐỒNG
                 st.write(f"#### 📊 Tổng hợp chi phí Hợp Đồng tháng {m_hd}/{y_hd}")
                 m1, m2, m3, m4, m5 = st.columns(5)
                 m1.metric("Tổng Giá HĐ (Chủ nhà)", fmt_vnd(df_view_hd['Giá HĐ'].sum()))
@@ -535,7 +534,7 @@ if sh:
             else:
                 st.warning(f"Không có căn nào có Giá HĐ > 0 hoạt động trong tháng {m_hd}/{y_hd}")
 
-    # --- TAB 6: QUẢN LÝ CHI PHÍ CHO THUÊ (CÓ BẢNG TỔNG HỢP TRÊN ĐẦU) ---
+    # --- TAB 6: QUẢN LÝ CHI PHÍ CHO THUÊ (TÁCH 2 NHÓM TỔNG HỢP TRÊN ĐẦU) ---
     with tabs[6]:
         st.subheader("🏠 Quản Lý Chi Phí Cho Thuê (Thu Khách Hàng)")
         col1, col2 = st.columns(2)
@@ -591,14 +590,25 @@ if sh:
                 df_view_ct = df_view_ct.drop_duplicates(subset=['Toà', 'Mã căn', 'Thời hạn cho thuê'], keep='first')
                 df_view_ct = df_view_ct.sort_values(by=['Toà', 'Mã căn'])
 
-                # HIỂN THỊ TỔNG HỢP METRICS CHO TAB CP CHO THUÊ
-                st.write(f"#### 📊 Tổng hợp chi phí Cho Thuê tháng {m_ct}/{y_ct}")
+                # TÁCH 2 NHÓM TỔNG HỢP DỰA TRÊN TRẠNG THÁI HĐ CHỦ
+                df_da_co = df_view_ct[df_view_ct['Trạng thái HĐ Chủ'] == "Đã có HĐ Chủ"]
+                df_trong = df_view_ct[df_view_ct['Trạng thái HĐ Chủ'] == "Trống HĐ Gốc"]
+
+                st.write(f"#### 📊 [Nhóm 1] Đã có Hợp đồng với Chủ nhà")
                 m1, m2, m3, m4, m5 = st.columns(5)
-                m1.metric("Tổng Giá Thuê (Khách)", fmt_vnd(df_view_ct['Giá'].sum()))
-                m2.metric("Tổng KH Thanh Toán", fmt_vnd(df_view_ct['KH thanh toán'].sum()))
-                m3.metric("Tổng KH Cọc", fmt_vnd(df_view_ct['KH cọc'].sum()))
-                m4.metric("Tổng Giá HĐ Chủ", fmt_vnd(df_view_ct['Giá HĐ Chủ'].sum()))
-                m5.metric("Tổng Lợi Nhuận Ròng", fmt_vnd(df_view_ct['Lợi nhuận ròng'].sum()))
+                m1.metric("Tổng Giá Thuê", fmt_vnd(df_da_co['Giá'].sum()))
+                m2.metric("Tổng KH Thanh Toán", fmt_vnd(df_da_co['KH thanh toán'].sum()))
+                m3.metric("Tổng KH Cọc", fmt_vnd(df_da_co['KH cọc'].sum()))
+                m4.metric("Tổng Giá HĐ Chủ", fmt_vnd(df_da_co['Giá HĐ Chủ'].sum()))
+                m5.metric("Tổng Lợi Nhuận Ròng", fmt_vnd(df_da_co['Lợi nhuận ròng'].sum()))
+
+                st.write(f"#### 📊 [Nhóm 2] Trống Hợp đồng gốc (Thuần lãi)")
+                n1, n2, n3, n4, n5 = st.columns(5)
+                n1.metric("Tổng Giá Thuê", fmt_vnd(df_trong['Giá'].sum()))
+                n2.metric("Tổng KH Thanh Toán", fmt_vnd(df_trong['KH thanh toán'].sum()))
+                n3.metric("Tổng KH Cọc", fmt_vnd(df_trong['KH cọc'].sum()))
+                n4.metric("Tổng Giá HĐ Chủ", fmt_vnd(df_trong['Giá HĐ Chủ'].sum())) # Sẽ bằng 0
+                n5.metric("Tổng Lợi Nhuận Ròng", fmt_vnd(df_trong['Lợi nhuận ròng'].sum()))
                 st.markdown("---")
 
                 cols_show = [
