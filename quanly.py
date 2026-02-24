@@ -243,7 +243,7 @@ if sh:
             if c in df_main.columns: df_main[c] = df_main[c].apply(clean_money)
 
     # ==============================================================================
-    # 5. SIDEBAR: THÔNG BÁO TÓM TẮT (TÁCH ĐÔI LOẠI PHÒNG TRỐNG)
+    # 5. SIDEBAR: THÔNG BÁO TÓM TẮT
     # ==============================================================================
     with st.sidebar:
         st.divider()
@@ -256,13 +256,11 @@ if sh:
             df_hd = df_alert_base[(df_alert_base['Ngày hết HĐ'].notna()) & ((df_alert_base['Ngày hết HĐ'] - today).dt.days.between(-999, 30))]
             df_kh = df_alert_base[(df_alert_base['Ngày out'].notna()) & ((df_alert_base['Ngày out'] - today).dt.days.between(0, 7))]
 
-            # Hàm check trạng thái Khách
             def check_tenant_active(row):
                 if pd.notna(row['Ngày in']) and pd.notna(row['Ngày out']):
                     return row['Ngày in'] <= today <= row['Ngày out']
                 return False
 
-            # Hàm check trạng thái HĐ Chủ
             def check_owner_active(row):
                 if pd.notna(row['Ngày ký']) and pd.notna(row['Ngày hết HĐ']):
                     return row['Ngày ký'] <= today <= row['Ngày hết HĐ']
@@ -271,7 +269,6 @@ if sh:
             df_alert_base['has_tenant'] = df_alert_base.apply(check_tenant_active, axis=1)
             df_alert_base['has_owner'] = df_alert_base.apply(check_owner_active, axis=1)
 
-            # Tách 2 danh sách trống
             df_trong_co_hd = df_alert_base[(~df_alert_base['has_tenant']) & (df_alert_base['has_owner'])]
             df_trong_khong_hd = df_alert_base[(~df_alert_base['has_tenant']) & (~df_alert_base['has_owner'])]
 
@@ -293,14 +290,12 @@ if sh:
                         toa_nha = str(r.get('Toà', 'Chưa rõ')).strip()
                         st.markdown(f"**🚪 P.{r['Mã căn']}** ({toa_nha}) - Còn {days_left} ngày")
 
-                # Cảnh báo gánh phí
                 if not df_trong_co_hd.empty:
                     st.error(f"🔵 {len(df_trong_co_hd)} Trống - Đang gánh phí")
                     for _, r in df_trong_co_hd.iterrows(): 
                         toa_nha = str(r.get('Toà', 'Chưa rõ')).strip()
                         st.markdown(f"**🔴 P.{r['Mã căn']}** ({toa_nha})")
 
-                # Cảnh báo nhàn rỗi
                 if not df_trong_khong_hd.empty:
                     st.info(f"⚪ {len(df_trong_khong_hd)} Trống - Không HĐ chủ")
                     for _, r in df_trong_khong_hd.iterrows(): 
@@ -313,19 +308,20 @@ if sh:
             st.cache_data.clear()
             st.rerun()
 
-    DANH_SACH_NHA = { "MT60": [], "MT61": [], "OC1A": [], "OC1B": [], "OC2A": [], "OC2B": [], "OC3": [] }
+    DANH_SACH_NHA = { "Tòa A": ["A101"], "Tòa B": ["B101"], "Khác": [] }
 
     # ==============================================================================
-    # 6. GIAO DIỆN CHÍNH (TABS)
+    # 6. GIAO DIỆN CHÍNH (TABS) - ĐÃ CẬP NHẬT GIAO DIỆN MỚI
     # ==============================================================================
     tabs = st.tabs([
         "✍️ Nhập Liệu", "📥 Upload Excel", "💸 Chi Phí Nội Bộ", 
         "📋 Dữ Liệu Gốc", "🏠 Cảnh Báo", 
         "🏢 CP Hợp Đồng", "🏠 CP Cho Thuê",
-        "📊 Lợi Nhuận (All)", "💸 Dòng Tiền Tháng", "📅 Quyết Toán Thuế",
+        "📈 Kết Quả HĐKD Năm",  # <-- TAB MỚI
         "💰 Quản Lý Tổng (Raw)" 
     ])
 
+    # --- TAB 0: NHẬP LIỆU ---
     with tabs[0]:
         st.subheader("✍️ Nhập Liệu Hợp Đồng Mới")
         av = st.session_state.get('auto', {}) 
@@ -363,6 +359,7 @@ if sh:
                 df_final = pd.concat([df_main, pd.DataFrame([new_data])], ignore_index=True)
                 save_data(df_final, "HOP_DONG"); st.session_state['auto'] = {}; time.sleep(1); st.rerun()
 
+    # --- TAB 1: UPLOAD ---
     with tabs[1]:
         st.header("📤 Quản lý File Excel")
         st.download_button("📥 Tải File Mẫu", convert_df_to_excel(pd.DataFrame(columns=COLUMNS)), "mau_hop_dong.xlsx")
@@ -375,6 +372,7 @@ if sh:
                 save_data(df_up, "HOP_DONG"); time.sleep(2); st.rerun()
             except Exception as e: st.error(f"Lỗi: {e}")
 
+    # --- TAB 2: CHI PHÍ ---
     with tabs[2]:
         st.subheader("💸 Chi Phí Nội Bộ")
         with st.form("cp_form"):
@@ -390,7 +388,7 @@ if sh:
         df_cp_show["Tiền"] = df_cp_show["Tiền"].apply(fmt_vnd)
         st.dataframe(df_cp_show, use_container_width=True, column_config={"Ngày": st.column_config.DateColumn(format="DD/MM/YY")})
 
-    # --- TAB 3: DỮ LIỆU GỐC (BỔ SUNG QUYỀN XÓA DÒNG num_rows="dynamic") ---
+    # --- TAB 3: DỮ LIỆU GỐC ---
     with tabs[3]:
         st.subheader("📋 Dữ Liệu Gốc (Có thể Thêm/Xóa dòng)")
         st.info("💡 Để **XÓA DÒNG**, bạn hãy click vào cột ngoài cùng bên trái của dòng đó, rồi nhấn phím `Delete` trên bàn phím (hoặc biểu tượng thùng rác). Sau đó bấm **LƯU DỮ LIỆU GỐC**.")
@@ -402,7 +400,7 @@ if sh:
         edited_df = st.data_editor(
             df_edit, 
             use_container_width=True,
-            num_rows="dynamic", # KÍCH HOẠT TÍNH NĂNG XÓA/THÊM DÒNG
+            num_rows="dynamic", 
             column_config={
                 "Ngày ký": st.column_config.DateColumn(format="DD/MM/YY"),
                 "Ngày hết HĐ": st.column_config.DateColumn(format="DD/MM/YY"),
@@ -417,7 +415,7 @@ if sh:
             save_data(df_to_save, "HOP_DONG")
             time.sleep(1); st.rerun()
 
-    # --- TAB 4: TRUNG TÂM CẢNH BÁO (TÁCH 2 LOẠI PHÒNG TRỐNG) ---
+    # --- TAB 4: TRUNG TÂM CẢNH BÁO ---
     with tabs[4]:
         st.subheader("🏠 Trung Tâm Cảnh Báo Chi Tiết")
         if not df_main.empty:
@@ -487,7 +485,6 @@ if sh:
 
             st.divider()
 
-            # TÍNH TOÁN LẠI ĐỂ TÁCH 2 MỤC PHÒNG TRỐNG
             df_alert_tab['has_tenant_4'] = df_alert_tab.apply(lambda r: (r['Ngày in'] <= today <= r['Ngày out']) if pd.notna(r['Ngày in']) and pd.notna(r['Ngày out']) else False, axis=1)
             df_alert_tab['has_owner_4'] = df_alert_tab.apply(lambda r: (r['Ngày ký'] <= today <= r['Ngày hết HĐ']) if pd.notna(r['Ngày ký']) and pd.notna(r['Ngày hết HĐ']) else False, axis=1)
 
@@ -713,142 +710,102 @@ if sh:
             else:
                 st.warning(f"Không có căn nào có Giá thuê > 0 hoạt động trong tháng {m_ct}/{y_ct}")
 
+    # --- TAB 7: KẾT QUẢ HOẠT ĐỘNG KINH DOANH TRONG NĂM (MỚI) ---
     with tabs[7]:
-        st.subheader("📊 Lợi Nhuận (All-time / Lũy kế)")
-        if not df_main.empty:
-            df_merged = gop_du_lieu_phong(df_main)
-            df_calc = df_merged.copy()
-            def get_m(s, e): return max(0, (e-s).days/30) if pd.notna(s) and pd.notna(e) else 0
-            
-            df_calc['Doanh thu'] = df_calc.apply(lambda r: r['Giá'] * get_m(r['Ngày in'], r['Ngày out']), axis=1)
-            df_calc['Giá vốn'] = df_calc.apply(lambda r: r['Giá HĐ'] * get_m(r['Ngày in'], r['Ngày out']), axis=1)
-            df_calc['Chi phí Sale'] = df_calc['SALE THẢO'] + df_calc['SALE NGA'] + df_calc['SALE LINH'] + df_calc['Công ty'] + df_calc['Cá Nhân']
-            df_calc['Lợi nhuận'] = df_calc['Doanh thu'] - df_calc['Giá vốn'] - df_calc['Chi phí Sale']
-            
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Tổng Doanh Thu Lũy Kế", fmt_vnd(df_calc['Doanh thu'].sum()))
-            c2.metric("Tổng Vốn + Sale Lũy Kế", fmt_vnd(df_calc['Giá vốn'].sum() + df_calc['Chi phí Sale'].sum()))
-            c3.metric("Tổng Lợi Nhuận All-time", fmt_vnd(df_calc['Lợi nhuận'].sum()))
-            
-            df_show = df_calc[["Toà", "Mã căn", "Doanh thu", "Giá vốn", "Chi phí Sale", "Lợi nhuận", "Ghi chú"]]
-            for c in ["Doanh thu", "Giá vốn", "Chi phí Sale", "Lợi nhuận"]: df_show[c] = df_show[c].apply(fmt_vnd)
-            st.dataframe(df_show.style.applymap(lambda x: 'color: red' if "(" in str(x) else '', subset=['Lợi nhuận']), use_container_width=True, column_config={"Ghi chú": st.column_config.TextColumn(width=500)})
+        st.subheader("📈 Báo Cáo Kết Quả Hoạt Động Kinh Doanh (Theo Năm)")
+        st.write("Báo cáo tự động tính toán chính xác dòng tiền thu - chi - lợi nhuận theo từng tháng dựa trên hợp đồng thực tế.")
+        
+        y_kd = st.selectbox("Chọn Năm Tài Chính", range(2020, date.today().year + 5), index=(date.today().year - 2020), key='y_kd')
+        st.divider()
 
+        # Hàm tính toán chính xác cho 1 tháng (Khử trùng lặp chuẩn như Tab 5 và 6)
+        def calc_month_stats(df_raw, df_chiphi, month, year):
+            start_d = pd.Timestamp(year, month, 1)
+            if month == 12: end_d = pd.Timestamp(year + 1, 1, 1) - pd.Timedelta(days=1)
+            else: end_d = pd.Timestamp(year, month + 1, 1) - pd.Timedelta(days=1)
+
+            doanh_thu = 0
+            chi_phi_hd = 0
+            chi_phi_vh = 0
+
+            if not df_raw.empty:
+                # 1. DOANH THU (KHÁCH THUÊ)
+                df_ct = df_raw.copy()
+                df_ct['tenant_active'] = df_ct.apply(lambda r: True if pd.notna(r['Ngày in']) and pd.notna(r['Ngày out']) and r['Ngày in'] <= end_d and r['Ngày out'] >= start_d else False, axis=1)
+                df_ct = df_ct[df_ct['tenant_active'] & (df_ct['Giá'] > 0)]
+                if not df_ct.empty:
+                    df_ct['Thời hạn cho thuê'] = df_ct['Ngày in'].apply(fmt_date) + " - " + df_ct['Ngày out'].apply(fmt_date)
+                    df_ct = df_ct.sort_values(by=['Giá'], ascending=False)
+                    df_ct = df_ct.drop_duplicates(subset=['Toà', 'Mã căn', 'Thời hạn cho thuê'], keep='first')
+                    doanh_thu = df_ct['Giá'].sum()
+
+                # 2. CHI PHÍ HỢP ĐỒNG (CHỦ NHÀ)
+                df_hd = df_raw.copy()
+                df_hd['owner_active'] = df_hd.apply(lambda r: True if pd.notna(r['Ngày ký']) and pd.notna(r['Ngày hết HĐ']) and r['Ngày ký'] <= end_d and r['Ngày hết HĐ'] >= start_d else False, axis=1)
+                df_hd = df_hd[df_hd['owner_active'] & (df_hd['Giá HĐ'] > 0)]
+                if not df_hd.empty:
+                    df_hd['Thời hạn HĐ'] = df_hd['Ngày ký'].apply(fmt_date) + " - " + df_hd['Ngày hết HĐ'].apply(fmt_date)
+                    df_hd = df_hd.sort_values(by=['Giá HĐ'], ascending=False) 
+                    df_hd = df_hd.drop_duplicates(subset=['Toà', 'Mã căn', 'Thời hạn HĐ'], keep='first')
+                    chi_phi_hd = df_hd['Giá HĐ'].sum()
+
+            # 3. CHI PHÍ VẬN HÀNH (ĐIỆN NƯỚC...)
+            if not df_chiphi.empty:
+                mask_cp = (df_chiphi['Ngày'] >= start_d) & (df_chiphi['Ngày'] <= end_d)
+                chi_phi_vh = pd.to_numeric(df_chiphi.loc[mask_cp, 'Tiền'], errors='coerce').sum()
+
+            loi_nhuan = doanh_thu - chi_phi_hd - chi_phi_vh
+            return doanh_thu, chi_phi_hd, chi_phi_vh, loi_nhuan
+
+        if not df_main.empty:
+            yearly_data = []
+            for m in range(1, 13):
+                dt, cp_hd, cp_vh, ln = calc_month_stats(df_main, df_cp, m, y_kd)
+                yearly_data.append({
+                    "Tháng": f"Tháng {m}",
+                    "Doanh Thu (A)": dt,
+                    "Chi Phí HĐ (B)": cp_hd,
+                    "Chi Phí Vận Hành (C)": cp_vh,
+                    "Tổng Chi Phí (D=B+C)": cp_hd + cp_vh,
+                    "Lợi Nhuận Ròng (A-D)": ln
+                })
+            
+            df_year = pd.DataFrame(yearly_data)
+
+            # METRICS TỔNG NĂM
+            st.write(f"### 🏆 TỔNG KẾT NĂM {y_kd}")
+            t1, t2, t3, t4 = st.columns(4)
+            t1.metric("💰 Tổng Doanh Thu Năm", fmt_vnd(df_year["Doanh Thu (A)"].sum()))
+            t2.metric("🏢 Tổng Trả Chủ Nhà", fmt_vnd(df_year["Chi Phí HĐ (B)"].sum()))
+            t3.metric("🔌 Tổng Chi Phí Khác", fmt_vnd(df_year["Chi Phí Vận Hành (C)"].sum()))
+            t4.metric("💵 Lợi Nhuận Ròng Năm", fmt_vnd(df_year["Lợi Nhuận Ròng (A-D)"].sum()), delta_color="normal" if df_year["Lợi Nhuận Ròng (A-D)"].sum() > 0 else "inverse")
+            st.divider()
+
+            # BIỂU ĐỒ TRỰC QUAN
+            st.write("#### 📊 Biểu đồ Doanh Thu & Lợi Nhuận qua các tháng")
+            chart_data = df_year[["Tháng", "Doanh Thu (A)", "Tổng Chi Phí (D=B+C)", "Lợi Nhuận Ròng (A-D)"]].set_index("Tháng")
+            st.bar_chart(chart_data)
+
+            # BẢNG CHI TIẾT
+            st.write("#### 📑 Bảng Báo Cáo Chi Tiết Hàng Tháng")
+            df_year_display = df_year.copy()
+            for col in ["Doanh Thu (A)", "Chi Phí HĐ (B)", "Chi Phí Vận Hành (C)", "Tổng Chi Phí (D=B+C)", "Lợi Nhuận Ròng (A-D)"]:
+                df_year_display[col] = df_year_display[col].apply(fmt_vnd)
+            
+            def color_negative_red_year(val):
+                color = 'red' if isinstance(val, str) and '(' in val else 'black'
+                return f'color: {color}'
+
+            st.dataframe(
+                df_year_display.style.applymap(color_negative_red_year, subset=['Lợi Nhuận Ròng (A-D)'])
+                                     .set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'}), 
+                use_container_width=True
+            )
+            
+            st.download_button("📥 Tải Báo Cáo Năm Excel", convert_df_to_excel(df_year), f"BaoCao_KinhDoanh_{y_kd}.xlsx")
+
+    # --- TAB 8: QUẢN LÝ TỔNG (HIỂN THỊ DỮ LIỆU THÔ, KHÔNG GỘP) ---
     with tabs[8]:
-        st.subheader("💸 Dòng Tiền Thực Tế (Phát Sinh Trong Tháng)")
-        col1, col2 = st.columns(2)
-        with col1: m8 = st.selectbox("Chọn Tháng", range(1, 13), index=date.today().month - 1, key='m8')
-        with col2: y8 = st.number_input("Chọn Năm", value=date.today().year, key='y8')
-        st.divider()
-        
-        start_mo = pd.Timestamp(y8, m8, 1)
-        if m8 == 12: end_mo = pd.Timestamp(y8 + 1, 1, 1) - pd.Timedelta(days=1)
-        else: end_mo = pd.Timestamp(y8, m8 + 1, 1) - pd.Timedelta(days=1)
-
-        if not df_main.empty:
-            df_base = gop_du_lieu_phong(df_main)
-            results_cf = []
-            for idx, row in df_base.iterrows():
-                thu = 0.0; chi = 0.0
-                if pd.notna(row['Ngày in']) and pd.notna(row['Ngày out']):
-                    if row['Ngày in'] <= end_mo and row['Ngày out'] >= start_mo:
-                        thu += row['Giá'] 
-                        if row['Ngày in'].month == m8 and row['Ngày in'].year == y8:
-                            thu += row['KH cọc'] 
-                if pd.notna(row['Ngày ký']) and pd.notna(row['Ngày hết HĐ']):
-                    if row['Ngày ký'] <= end_mo and row['Ngày hết HĐ'] >= start_mo:
-                        chi += row['Giá HĐ'] 
-                        if row['Ngày ký'].month == m8 and row['Ngày ký'].year == y8:
-                            chi += row['Cọc cho chủ nhà'] 
-                            chi += row['SALE THẢO'] + row['SALE NGA'] + row['SALE LINH'] + row['Công ty'] + row['Cá Nhân']
-                
-                if thu > 0 or chi > 0:
-                    results_cf.append({"Toà": row['Toà'], "Mã căn": row['Mã căn'], "Thu": thu, "Chi": chi, "Ghi chú": row['Ghi chú']})
-            
-            df_cf_month = pd.DataFrame(results_cf)
-            if not df_cf_month.empty: df_cf_month['Mã căn'] = clean_macan(df_cf_month['Mã căn'])
-            
-            df_cp_month = df_cp[(df_cp['Ngày'] >= start_mo) & (df_cp['Ngày'] <= end_mo)]
-            if not df_cp_month.empty:
-                cp_agg = df_cp_month.groupby('Mã căn')['Tiền'].sum().reset_index().rename(columns={'Tiền': 'Chi phí VH'})
-                cp_agg['Mã căn'] = clean_macan(cp_agg['Mã căn'])
-            else: cp_agg = pd.DataFrame(columns=['Mã căn', 'Chi phí VH'])
-            
-            if not df_cf_month.empty and not cp_agg.empty:
-                df_final_cf = pd.merge(df_cf_month, cp_agg, on='Mã căn', how='outer').fillna(0)
-                map_toa = df_base.drop_duplicates('Mã căn').set_index('Mã căn')['Toà'].to_dict()
-                df_final_cf['Toà'] = df_final_cf.apply(lambda x: map_toa.get(x['Mã căn'], 'Khác') if pd.isna(x['Toà']) or x['Toà'] == 0 else x['Toà'], axis=1)
-            elif not df_cf_month.empty:
-                df_final_cf = df_cf_month.copy()
-                df_final_cf['Chi phí VH'] = 0.0
-            elif not cp_agg.empty:
-                df_final_cf = cp_agg.copy()
-                df_final_cf['Thu'] = 0.0; df_final_cf['Chi'] = 0.0
-                map_toa = df_base.drop_duplicates('Mã căn').set_index('Mã căn')['Toà'].to_dict()
-                df_final_cf['Toà'] = df_final_cf['Mã căn'].map(map_toa).fillna('Khác')
-                df_final_cf['Ghi chú'] = "Chỉ có chi phí vận hành"
-            else: df_final_cf = pd.DataFrame()
-
-            if not df_final_cf.empty:
-                df_final_cf['Ròng'] = df_final_cf['Thu'] - df_final_cf['Chi'] - df_final_cf['Chi phí VH']
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Tổng Thực Thu", fmt_vnd(df_final_cf['Thu'].sum()))
-                c2.metric("Tổng Thực Chi", fmt_vnd(df_final_cf['Chi'].sum() + df_final_cf['Chi phí VH'].sum()))
-                c3.metric("Dòng Tiền Ròng", fmt_vnd(df_final_cf['Ròng'].sum()))
-                
-                df_cf_show = df_final_cf[["Toà", "Mã căn", "Thu", "Chi", "Chi phí VH", "Ròng", "Ghi chú"]].copy()
-                for c in ["Thu", "Chi", "Chi phí VH", "Ròng"]: df_cf_show[c] = df_cf_show[c].apply(fmt_vnd)
-                
-                st.dataframe(df_cf_show.style.applymap(lambda x: 'color: red' if "(" in str(x) else '', subset=['Ròng']), use_container_width=True, column_config={"Ghi chú": st.column_config.TextColumn(width=500)})
-                st.download_button("📥 Tải Báo Cáo Dòng Tiền", convert_df_to_excel(df_final_cf), f"DongTien_Thang_{m8}_{y8}.xlsx")
-            else: st.warning(f"Không có dòng tiền nào phát sinh trong tháng {m8}/{y8}")
-
-    with tabs[9]:
-        st.subheader("📅 Quyết Toán Doanh Thu & Thuế Hàng Tháng")
-        col_t1, col_t2, col_t3 = st.columns(3)
-        with col_t1: m9 = st.selectbox("Tháng", range(1, 13), index=date.today().month - 1, key='m9')
-        with col_t2: y9 = st.number_input("Năm", value=date.today().year, key='y9')
-        with col_t3: tax_rate = st.number_input("Thuế khoán (%)", value=10.0, step=0.1) / 100.0
-        st.divider()
-        
-        start_mo = pd.Timestamp(y9, m9, 1)
-        if m9 == 12: end_mo = pd.Timestamp(y9 + 1, 1, 1) - pd.Timedelta(days=1)
-        else: end_mo = pd.Timestamp(y9, m9 + 1, 1) - pd.Timedelta(days=1)
-        
-        if not df_main.empty:
-            df_month_base = gop_du_lieu_phong(df_main)
-            results_month = []
-            for idx, row in df_month_base.iterrows():
-                cost_month = 0.0
-                if pd.notna(row['Ngày ký']) and pd.notna(row['Ngày hết HĐ']):
-                    if row['Ngày ký'] <= end_mo and row['Ngày hết HĐ'] >= start_mo: cost_month = row['Giá HĐ']
-                
-                rev_month = 0.0
-                if pd.notna(row['Ngày in']) and pd.notna(row['Ngày out']):
-                    if row['Ngày in'] <= end_mo and row['Ngày out'] >= start_mo: rev_month = row['Giá']
-                
-                if rev_month > 0 or cost_month > 0:
-                    tax_amt = rev_month * tax_rate
-                    net_profit = rev_month - cost_month - tax_amt
-                    results_month.append({"Toà": row['Toà'], "Mã căn": row['Mã căn'], "Doanh thu tháng": rev_month, "Chi phí thuê (Vốn)": cost_month, "Thuế phải đóng": tax_amt, "Lợi nhuận ròng": net_profit, "Ghi chú": row['Ghi chú']})
-            
-            if results_month:
-                df_month_rep = pd.DataFrame(results_month)
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Tổng Doanh Thu", fmt_vnd(df_month_rep['Doanh thu tháng'].sum()))
-                m2.metric("Tổng Vốn Trả Chủ", fmt_vnd(df_month_rep['Chi phí thuê (Vốn)'].sum()))
-                m3.metric("Tổng Thuế", fmt_vnd(df_month_rep['Thuế phải đóng'].sum()))
-                m4.metric("Lợi Nhuận Sau Thuế", fmt_vnd(df_month_rep['Lợi nhuận ròng'].sum()), delta_color="normal" if df_month_rep['Lợi nhuận ròng'].sum() > 0 else "inverse")
-                st.divider()
-                
-                df_display = df_month_rep.copy()
-                for c in ["Doanh thu tháng", "Chi phí thuê (Vốn)", "Thuế phải đóng", "Lợi nhuận ròng"]: df_display[c] = df_display[c].apply(fmt_vnd)
-                st.dataframe(df_display.style.set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'}), use_container_width=True, column_config={"Ghi chú": st.column_config.TextColumn(width=300)})
-                st.download_button("📥 Tải Báo Cáo Quyết Toán", convert_df_to_excel(df_month_rep), f"QuyetToan_{m9}_{y9}.xlsx")
-            else: st.warning(f"Không có dữ liệu trong tháng {m9}/{y9}")
-
-    # --- TAB 10: QUẢN LÝ TỔNG (HIỂN THỊ DỮ LIỆU THÔ, KHÔNG GỘP) ---
-    with tabs[10]:
         st.subheader("💰 Quản Lý Tổng Hợp (Lọc theo Tháng - Không gộp dòng)")
         col1, col2 = st.columns(2)
         with col1: m_chung = st.selectbox("Chọn Tháng", range(1, 13), index=date.today().month - 1, key='m_chung')
