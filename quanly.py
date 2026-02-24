@@ -70,16 +70,22 @@ def connect_google_sheet(uploaded_file=None):
     try:
         creds_dict = None
         
+        # ƯU TIÊN 1: Đọc từ Két sắt bảo mật của Streamlit (dạng chuỗi văn bản TOML)
         if "google_credentials" in st.secrets:
             creds_dict = json.loads(st.secrets["google_credentials"])
+            
+        # ƯU TIÊN 2: Đọc file key.json (Nếu bạn chạy thử trên máy tính cá nhân)
         elif os.path.exists("key.json"):
             with open("key.json", "r", encoding="utf-8") as f:
                 creds_dict = json.load(f)
+                
+        # ƯU TIÊN 3: Nếu người dùng upload file từ giao diện
         elif uploaded_file is not None:
             file_content = uploaded_file.read().decode("utf-8")
             creds_dict = json.loads(file_content)
             
         if creds_dict:
+            # Sửa lỗi mất dấu xuống dòng của file JSON (nguyên nhân gây lỗi JWT)
             if 'private_key' in creds_dict:
                 creds_dict['private_key'] = creds_dict['private_key'].replace('\\\\n', '\n').replace('\\n', '\n')
             
@@ -216,7 +222,7 @@ if sh:
         return df_grouped
 
     # ==============================================================================
-    # 4. TẢI VÀ CHUẨN HÓA DỮ LIỆU ĐẦU VÀO
+    # 4. TẢI VÀ CHUẨN HÓA DỮ LIỆU ĐẦU VÀO TỪ GOOGLE SHEET
     # ==============================================================================
     df_main = load_data("HOP_DONG")
     df_cp = load_data("CHI_PHI")
@@ -493,7 +499,6 @@ if sh:
             df_raw_hd = df_main.copy()
             
             def process_row_hd(row):
-                # Check HĐ chủ nhà
                 hd_active = False
                 if pd.notna(row['Ngày ký']) and pd.notna(row['Ngày hết HĐ']):
                     if row['Ngày ký'] <= end_mo_hd and row['Ngày hết HĐ'] >= start_mo_hd: 
@@ -505,7 +510,6 @@ if sh:
 
                 thoi_han_hd = f"{fmt_date(row['Ngày ký'])} - {fmt_date(row['Ngày hết HĐ'])}"
 
-                # Check khách thuê active
                 tenant_active = False
                 if pd.notna(row['Ngày in']) and pd.notna(row['Ngày out']):
                     if row['Ngày in'] <= end_mo_hd and row['Ngày out'] >= start_mo_hd:
@@ -530,7 +534,6 @@ if sh:
             df_view_hd = df_view_hd[df_view_hd['_keep'] == True]
             
             if not df_view_hd.empty:
-                # Khử trùng lặp
                 df_view_hd = df_view_hd.sort_values(by=['Giá thuê'], ascending=False)
                 df_view_hd = df_view_hd.drop_duplicates(subset=['Toà', 'Mã căn', 'Thời hạn HĐ'], keep='first')
                 df_view_hd = df_view_hd.sort_values(by=['Toà', 'Mã căn'])
@@ -574,21 +577,19 @@ if sh:
             df_raw_ct = df_main.copy()
             
             def process_row_ct(row):
-                # 1. Check khách thuê active
                 tenant_active = False
                 if pd.notna(row['Ngày in']) and pd.notna(row['Ngày out']):
                     if row['Ngày in'] <= end_mo_ct and row['Ngày out'] >= start_mo_ct: 
                         tenant_active = True
                 
-                # Bỏ qua nếu không có khách thuê HOẶC giá thuê <= 0
                 if not tenant_active or row.get('Giá', 0) <= 0:
+                    # FIX LỖI: Sửa tên cột trung gian 'Giá HĐ' thành 'Giá HĐ Chủ' để không bị trùng lặp
                     return pd.Series([False, "", "", "", 0, 0], 
-                                     index=['_keep', 'Thời hạn cho thuê', 'Trạng thái HĐ Chủ', 'Thời hạn HĐ', 'Giá HĐ', 'Lợi nhuận ròng'])
+                                     index=['_keep', 'Thời hạn cho thuê', 'Trạng thái HĐ Chủ', 'Thời hạn HĐ', 'Giá HĐ Chủ', 'Lợi nhuận ròng'])
 
                 thoi_han_thue = f"{fmt_date(row['Ngày in'])} - {fmt_date(row['Ngày out'])}"
                 gia_thue = row.get('Giá', 0)
 
-                # 2. Check hợp đồng với chủ nhà
                 hd_active = False
                 if pd.notna(row['Ngày ký']) and pd.notna(row['Ngày hết HĐ']):
                     if row['Ngày ký'] <= end_mo_ct and row['Ngày hết HĐ'] >= start_mo_ct:
@@ -605,30 +606,29 @@ if sh:
 
                 loi_nhuan = gia_thue - gia_hd
 
+                # FIX LỖI: Đổi index 'Giá HĐ' thành 'Giá HĐ Chủ'
                 return pd.Series([True, thoi_han_thue, trang_thai_chu, thoi_han_hd, gia_hd, loi_nhuan], 
-                                 index=['_keep', 'Thời hạn cho thuê', 'Trạng thái HĐ Chủ', 'Thời hạn HĐ', 'Giá HĐ', 'Lợi nhuận ròng'])
+                                 index=['_keep', 'Thời hạn cho thuê', 'Trạng thái HĐ Chủ', 'Thời hạn HĐ', 'Giá HĐ Chủ', 'Lợi nhuận ròng'])
 
             ct_calcs = df_raw_ct.apply(process_row_ct, axis=1)
             df_view_ct = pd.concat([df_raw_ct, ct_calcs], axis=1)
             df_view_ct = df_view_ct[df_view_ct['_keep'] == True]
             
             if not df_view_ct.empty:
-                # ---> BỘ LỌC TRÙNG LẶP KHÁCH THUÊ <---
-                # Ưu tiên những dòng có khai báo Giá HĐ cao hơn để báo lỗ cho chuẩn (trong trường hợp nhập trùng rác)
-                df_view_ct = df_view_ct.sort_values(by=['Giá HĐ'], ascending=False)
-                # Dựa vào Tòa, Mã căn và Thời hạn khách ở, nếu trùng thì giữ 1 dòng
+                # Sắp xếp và lọc trùng dựa trên cột 'Giá HĐ Chủ'
+                df_view_ct = df_view_ct.sort_values(by=['Giá HĐ Chủ'], ascending=False)
                 df_view_ct = df_view_ct.drop_duplicates(subset=['Toà', 'Mã căn', 'Thời hạn cho thuê'], keep='first')
                 df_view_ct = df_view_ct.sort_values(by=['Toà', 'Mã căn'])
 
                 cols_show = [
                     "Toà", "Mã căn", "Tên khách thuê", "Thời hạn cho thuê", "Giá", "KH thanh toán", "KH cọc",
-                    "Trạng thái HĐ Chủ", "Thời hạn HĐ", "Giá HĐ", "Lợi nhuận ròng"
+                    "Trạng thái HĐ Chủ", "Thời hạn HĐ", "Giá HĐ Chủ", "Lợi nhuận ròng"
                 ]
                 cols_exist = [c for c in cols_show if c in df_view_ct.columns]
                 df_display_ct = df_view_ct[cols_exist].copy()
                 
-                # Đổi tên hiển thị cho đẹp
-                df_display_ct = df_display_ct.rename(columns={'Giá': 'Giá thuê'})
+                # Đổi lại tên cột hiển thị cho đẹp
+                df_display_ct = df_display_ct.rename(columns={'Giá': 'Giá thuê', 'Giá HĐ Chủ': 'Giá HĐ'})
                 df_export_ct = df_display_ct.copy() 
                 
                 num_cols = ["Giá thuê", "KH thanh toán", "KH cọc", "Giá HĐ", "Lợi nhuận ròng"]
