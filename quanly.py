@@ -56,10 +56,6 @@ COLS_MONEY = [
 ]
 
 # ==============================================================================
-# 2. KẾT NỐI DỮ LIỆU THÔNG MINH (TỰ ĐỘNG VÁ LỖI CHỮ KÝ JWT)
-# ==============================================================================
-
-# ==============================================================================
 # 2. KẾT NỐI DỮ LIỆU THÔNG MINH (BẢO MẬT STREAMLIT SECRETS)
 # ==============================================================================
 
@@ -74,9 +70,8 @@ def connect_google_sheet(uploaded_file=None):
     try:
         creds_dict = None
         
-        # ƯU TIÊN 1: Đọc từ Két sắt bảo mật của Streamlit (dạng chuỗi văn bản)
+        # ƯU TIÊN 1: Đọc từ Két sắt bảo mật của Streamlit (dạng chuỗi văn bản TOML)
         if "google_credentials" in st.secrets:
-            # Chuyển chuỗi văn bản TOML thành JSON
             creds_dict = json.loads(st.secrets["google_credentials"])
             
         # ƯU TIÊN 2: Đọc file key.json (Nếu bạn chạy thử trên máy tính cá nhân)
@@ -177,10 +172,14 @@ if sh:
             df_export.to_excel(writer, index=False, sheet_name='Sheet1')
         return output.getvalue()
     
+    def clean_macan(col):
+        return col.astype(str).str.replace(r'\.0$', '', regex=True).str.strip().str.upper()
+
     def gop_du_lieu_phong(df_input):
         if df_input.empty: return df_input
         df = df_input.copy()
         df.columns = df.columns.str.strip()
+        df['Mã căn'] = clean_macan(df['Mã căn'])
 
         def tao_mo_ta_dong(row):
             details = []
@@ -223,7 +222,7 @@ if sh:
         return df_grouped
 
     # ==============================================================================
-    # 4. TẢI VÀ CHUẨN HÓA DỮ LIỆU ĐẦU VÀO
+    # 4. TẢI VÀ CHUẨN HÓA DỮ LIỆU ĐẦU VÀO TỪ GOOGLE SHEET
     # ==============================================================================
     df_main = load_data("HOP_DONG")
     df_cp = load_data("CHI_PHI")
@@ -232,15 +231,13 @@ if sh:
         df_cp = pd.DataFrame(columns=COLUMNS_CP)
     else:
         df_cp.columns = df_cp.columns.str.strip()
-        if "Mã căn" in df_cp.columns: 
-            df_cp["Mã căn"] = df_cp["Mã căn"].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+        if "Mã căn" in df_cp.columns: df_cp["Mã căn"] = clean_macan(df_cp["Mã căn"])
         if "Ngày" in df_cp.columns: df_cp["Ngày"] = pd.to_datetime(df_cp["Ngày"], errors='coerce')
         if "Tiền" in df_cp.columns: df_cp["Tiền"] = df_cp["Tiền"].apply(clean_money)
 
     if not df_main.empty:
         df_main.columns = df_main.columns.str.strip()
-        if "Mã căn" in df_main.columns: 
-            df_main["Mã căn"] = df_main["Mã căn"].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+        if "Mã căn" in df_main.columns: df_main["Mã căn"] = clean_macan(df_main["Mã căn"])
         for c in ["Ngày ký", "Ngày hết HĐ", "Ngày in", "Ngày out"]:
             if c in df_main.columns: df_main[c] = pd.to_datetime(df_main[c], errors='coerce')
         for c in COLS_MONEY:
@@ -281,16 +278,16 @@ if sh:
             st.cache_data.clear()
             st.rerun()
 
-    DANH_SACH_NHA = { "MT60": [], "MT61": [], "OC1A": [], "OC1B": [], "OC2A": [], "OC2B": [], "OC3": [] }
+    DANH_SACH_NHA = { "Tòa A": ["A101"], "Tòa B": ["B101"], "Khác": [] }
 
     # ==============================================================================
-    # 6. GIAO DIỆN CHÍNH (TABS)
+    # 6. GIAO DIỆN CHÍNH (TABS) ĐÃ CẬP NHẬT
     # ==============================================================================
     tabs = st.tabs([
         "✍️ Nhập Liệu", "📥 Upload Excel", "💸 Chi Phí Nội Bộ", 
         "📋 Dữ Liệu Gốc", "🏠 Cảnh Báo", 
-        "💰 Quản Lý Hợp Đồng", "📊 Lợi Nhuận (All)", "💸 Dòng Tiền Tháng",
-        "📅 Quyết Toán Thuế" 
+        "💰 Quản Lý Hợp Đồng", "🏢 CP Hợp Đồng", "🏠 CP Cho Thuê", # <-- Thêm 2 Tab ở đây
+        "📊 Lợi Nhuận (All)", "💸 Dòng Tiền Tháng", "📅 Quyết Toán Thuế" 
     ])
 
     with tabs[0]:
@@ -359,10 +356,12 @@ if sh:
 
     with tabs[3]:
         st.subheader("📋 Dữ Liệu Gốc")
-        st.info("💡 Sửa trực tiếp trên bảng và bấm Lưu để cập nhật số liệu chuẩn xác lên mây.")
+        st.info("💡 Bạn có thể SỬA TRỰC TIẾP các lỗi số khổng lồ tại bảng này và bấm Lưu.")
+        
         df_edit = df_main.copy()
         for c in COLS_MONEY:
-             if c in df_edit.columns: df_edit[c] = df_edit[c].apply(lambda x: "{:,.0f}".format(x).replace(",", "."))
+            if c in df_edit.columns: 
+                df_edit[c] = df_edit[c].apply(lambda x: str(int(x)) if pd.notna(x) else "0")
         
         edited_df = st.data_editor(
             df_edit, 
@@ -448,8 +447,9 @@ if sh:
                         st.markdown("📝 **Mẫu tin nhắn nhắc khách:**")
                         st.code(f"Chào {khach},\nPhòng {row['Mã căn']} tòa {toa_nha} của bạn sẽ đến hạn trả phòng vào ngày {fmt_date(row['Ngày out'])}.\nBạn vui lòng chuẩn bị dọn dẹp và liên hệ BQL để chốt số điện nước, làm thủ tục bàn giao và hoàn cọc ({fmt_vnd(coc)}) nhé. Cảm ơn bạn!", language="text")
 
+    # --- TAB 6: QUẢN LÝ HỢP ĐỒNG CHUNG ---
     with tabs[5]:
-        st.subheader("💰 Quản Lý Hợp Đồng (Lọc theo Tháng)")
+        st.subheader("💰 Quản Lý Hợp Đồng Chung (Lọc theo Tháng)")
         col1, col2 = st.columns(2)
         with col1: m6 = st.selectbox("Chọn Tháng", range(1, 13), index=date.today().month - 1, key='m6')
         with col2: y6 = st.number_input("Chọn Năm", value=date.today().year, key='y6')
@@ -480,11 +480,87 @@ if sh:
                     if c in df_display.columns: df_display[c] = df_display[c].apply(fmt_vnd)
                 
                 st.dataframe(df_display.style.set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'}), use_container_width=True, column_config={"Ghi chú": st.column_config.TextColumn(width=500)})
-                st.download_button("📥 Tải Excel", convert_df_to_excel(df_export_6), f"QuanLy_Thang_{m6}_{y6}.xlsx")
+                st.download_button("📥 Tải Excel", convert_df_to_excel(df_export_6), f"QuanLy_Chung_{m6}_{y6}.xlsx")
             else:
                 st.warning(f"Không có hợp đồng nào hoạt động trong tháng {m6}/{y6}")
 
+    # --- TAB 7: QUẢN LÝ CHI PHÍ HỢP ĐỒNG (Giá HĐ > 0) ---
     with tabs[6]:
+        st.subheader("🏢 Quản Lý Chi Phí Hợp Đồng (Trả Chủ Nhà)")
+        col1, col2 = st.columns(2)
+        with col1: m_hd = st.selectbox("Chọn Tháng", range(1, 13), index=date.today().month - 1, key='m_hd')
+        with col2: y_hd = st.number_input("Chọn Năm", value=date.today().year, key='y_hd')
+        st.divider()
+
+        start_mo_hd = pd.Timestamp(y_hd, m_hd, 1)
+        if m_hd == 12: end_mo_hd = pd.Timestamp(y_hd + 1, 1, 1) - pd.Timedelta(days=1)
+        else: end_mo_hd = pd.Timestamp(y_hd, m_hd + 1, 1) - pd.Timedelta(days=1)
+
+        if not df_main.empty:
+            df_agg = gop_du_lieu_phong(df_main)
+            def is_active_hd(row):
+                if pd.notna(row['Ngày ký']) and pd.notna(row['Ngày hết HĐ']):
+                    if row['Ngày ký'] <= end_mo_hd and row['Ngày hết HĐ'] >= start_mo_hd: 
+                        return True
+                return False
+            
+            df_view_hd = df_agg[df_agg.apply(is_active_hd, axis=1)].copy()
+            # Lọc chỉ lấy những căn có Giá HĐ > 0
+            df_view_hd = df_view_hd[df_view_hd['Giá HĐ'] > 0]
+            
+            if not df_view_hd.empty:
+                cols_show = ["Toà", "Mã căn", "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Giá", "KH thanh toán", "KH cọc", "Ghi chú"]
+                cols_exist = [c for c in cols_show if c in df_view_hd.columns]
+                df_display_hd = df_view_hd[cols_exist].copy()
+                df_export_hd = df_display_hd.copy() 
+                num_cols = ["Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Giá", "KH thanh toán", "KH cọc"]
+                for c in num_cols: 
+                    if c in df_display_hd.columns: df_display_hd[c] = df_display_hd[c].apply(fmt_vnd)
+                
+                st.dataframe(df_display_hd.style.set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'}), use_container_width=True, column_config={"Ghi chú": st.column_config.TextColumn(width=500)})
+                st.download_button("📥 Tải Excel CPHĐ", convert_df_to_excel(df_export_hd), f"CP_HopDong_{m_hd}_{y_hd}.xlsx")
+            else:
+                st.warning(f"Không có căn nào có Giá HĐ > 0 hoạt động trong tháng {m_hd}/{y_hd}")
+
+    # --- TAB 8: QUẢN LÝ CHI PHÍ CHO THUÊ (Giá thuê > 0) ---
+    with tabs[7]:
+        st.subheader("🏠 Quản Lý Chi Phí Cho Thuê (Thu Khách Hàng)")
+        col1, col2 = st.columns(2)
+        with col1: m_ct = st.selectbox("Chọn Tháng", range(1, 13), index=date.today().month - 1, key='m_ct')
+        with col2: y_ct = st.number_input("Chọn Năm", value=date.today().year, key='y_ct')
+        st.divider()
+
+        start_mo_ct = pd.Timestamp(y_ct, m_ct, 1)
+        if m_ct == 12: end_mo_ct = pd.Timestamp(y_ct + 1, 1, 1) - pd.Timedelta(days=1)
+        else: end_mo_ct = pd.Timestamp(y_ct, m_ct + 1, 1) - pd.Timedelta(days=1)
+
+        if not df_main.empty:
+            df_agg = gop_du_lieu_phong(df_main)
+            def is_active_ct(row):
+                if pd.notna(row['Ngày in']) and pd.notna(row['Ngày out']):
+                    if row['Ngày in'] <= end_mo_ct and row['Ngày out'] >= start_mo_ct: 
+                        return True
+                return False
+            
+            df_view_ct = df_agg[df_agg.apply(is_active_ct, axis=1)].copy()
+            # Lọc chỉ lấy những căn có Giá thuê khách trả > 0
+            df_view_ct = df_view_ct[df_view_ct['Giá'] > 0]
+            
+            if not df_view_ct.empty:
+                cols_show = ["Toà", "Mã căn", "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Giá", "KH thanh toán", "KH cọc", "Ghi chú"]
+                cols_exist = [c for c in cols_show if c in df_view_ct.columns]
+                df_display_ct = df_view_ct[cols_exist].copy()
+                df_export_ct = df_display_ct.copy() 
+                num_cols = ["Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Giá", "KH thanh toán", "KH cọc"]
+                for c in num_cols: 
+                    if c in df_display_ct.columns: df_display_ct[c] = df_display_ct[c].apply(fmt_vnd)
+                
+                st.dataframe(df_display_ct.style.set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'}), use_container_width=True, column_config={"Ghi chú": st.column_config.TextColumn(width=500)})
+                st.download_button("📥 Tải Excel Khách Thuê", convert_df_to_excel(df_export_ct), f"CP_ChoThue_{m_ct}_{y_ct}.xlsx")
+            else:
+                st.warning(f"Không có căn nào có Giá thuê > 0 hoạt động trong tháng {m_ct}/{y_ct}")
+
+    with tabs[8]:
         st.subheader("📊 Lợi Nhuận (All-time / Lũy kế)")
         if not df_main.empty:
             df_merged = gop_du_lieu_phong(df_main)
@@ -505,7 +581,7 @@ if sh:
             for c in ["Doanh thu", "Giá vốn", "Chi phí Sale", "Lợi nhuận"]: df_show[c] = df_show[c].apply(fmt_vnd)
             st.dataframe(df_show.style.applymap(lambda x: 'color: red' if "(" in str(x) else '', subset=['Lợi nhuận']), use_container_width=True, column_config={"Ghi chú": st.column_config.TextColumn(width=500)})
 
-    with tabs[7]:
+    with tabs[9]:
         st.subheader("💸 Dòng Tiền Thực Tế (Phát Sinh Trong Tháng)")
         col1, col2 = st.columns(2)
         with col1: m8 = st.selectbox("Chọn Tháng", range(1, 13), index=date.today().month - 1, key='m8')
@@ -537,12 +613,12 @@ if sh:
                     results_cf.append({"Toà": row['Toà'], "Mã căn": row['Mã căn'], "Thu": thu, "Chi": chi, "Ghi chú": row['Ghi chú']})
             
             df_cf_month = pd.DataFrame(results_cf)
-            if not df_cf_month.empty: df_cf_month['Mã căn'] = df_cf_month['Mã căn'].astype(str).str.strip()
+            if not df_cf_month.empty: df_cf_month['Mã căn'] = clean_macan(df_cf_month['Mã căn'])
             
             df_cp_month = df_cp[(df_cp['Ngày'] >= start_mo) & (df_cp['Ngày'] <= end_mo)]
             if not df_cp_month.empty:
                 cp_agg = df_cp_month.groupby('Mã căn')['Tiền'].sum().reset_index().rename(columns={'Tiền': 'Chi phí VH'})
-                cp_agg['Mã căn'] = cp_agg['Mã căn'].astype(str).str.strip()
+                cp_agg['Mã căn'] = clean_macan(cp_agg['Mã căn'])
             else: cp_agg = pd.DataFrame(columns=['Mã căn', 'Chi phí VH'])
             
             if not df_cf_month.empty and not cp_agg.empty:
@@ -574,7 +650,7 @@ if sh:
                 st.download_button("📥 Tải Báo Cáo Dòng Tiền", convert_df_to_excel(df_final_cf), f"DongTien_Thang_{m8}_{y8}.xlsx")
             else: st.warning(f"Không có dòng tiền nào phát sinh trong tháng {m8}/{y8}")
 
-    with tabs[8]:
+    with tabs[10]:
         st.subheader("📅 Quyết Toán Doanh Thu & Thuế Hàng Tháng")
         col_t1, col_t2, col_t3 = st.columns(3)
         with col_t1: m9 = st.selectbox("Tháng", range(1, 13), index=date.today().month - 1, key='m9')
