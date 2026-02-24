@@ -482,7 +482,7 @@ if sh:
             else:
                 st.warning(f"Không có hợp đồng nào hoạt động trong tháng {m6}/{y6}")
 
-    # --- TAB 7: QUẢN LÝ CHI PHÍ HỢP ĐỒNG (TÁCH DÒNG + THÊM CỘT LỢI NHUẬN) ---
+    # --- TAB 7: QUẢN LÝ CHI PHÍ HỢP ĐỒNG (TÁCH DÒNG + LỌC TRÙNG) ---
     with tabs[6]:
         st.subheader("🏢 Quản Lý Chi Phí Hợp Đồng (Trả Chủ Nhà)")
         col1, col2 = st.columns(2)
@@ -498,21 +498,19 @@ if sh:
             df_raw_hd = df_main.copy()
             
             def process_row_hd(row):
-                # 1. Kiểm tra xem hợp đồng chủ nhà có active trong tháng chọn không
+                # 1. Check xem hợp đồng chủ nhà có active không
                 hd_active = False
                 if pd.notna(row['Ngày ký']) and pd.notna(row['Ngày hết HĐ']):
                     if row['Ngày ký'] <= end_mo_hd and row['Ngày hết HĐ'] >= start_mo_hd: 
                         hd_active = True
                 
-                # Nếu không active HOẶC giá HĐ = 0 thì loại bỏ dòng này
                 if not hd_active or row.get('Giá HĐ', 0) <= 0:
                     return pd.Series([False, "", "", "", 0, 0], 
                                      index=['_keep', 'Thời hạn HĐ', 'Trạng thái', 'Thời hạn cho thuê', 'Giá thuê', 'Lợi nhuận ròng'])
 
-                # Format lại thời hạn hợp đồng với chủ nhà
                 thoi_han_hd = f"{fmt_date(row['Ngày ký'])} - {fmt_date(row['Ngày hết HĐ'])}"
 
-                # 2. Kiểm tra xem TRONG THÁNG NÀY phòng đó có khách thuê không
+                # 2. Check khách thuê active
                 tenant_active = False
                 if pd.notna(row['Ngày in']) and pd.notna(row['Ngày out']):
                     if row['Ngày in'] <= end_mo_hd and row['Ngày out'] >= start_mo_hd:
@@ -527,21 +525,26 @@ if sh:
                     thoi_han_thue = "N/A"
                     gia_thue = 0
 
-                # Tính lợi nhuận ròng (sẽ âm nếu phòng trống)
                 loi_nhuan = gia_thue - row.get('Giá HĐ', 0)
 
                 return pd.Series([True, thoi_han_hd, trang_thai, thoi_han_thue, gia_thue, loi_nhuan], 
                                  index=['_keep', 'Thời hạn HĐ', 'Trạng thái', 'Thời hạn cho thuê', 'Giá thuê', 'Lợi nhuận ròng'])
 
-            # Áp dụng hàm tính toán logic trên
             hd_calcs = df_raw_hd.apply(process_row_hd, axis=1)
             df_view_hd = pd.concat([df_raw_hd, hd_calcs], axis=1)
             
-            # Lọc giữ lại các dòng hợp lệ
             df_view_hd = df_view_hd[df_view_hd['_keep'] == True]
             
             if not df_view_hd.empty:
-                # Sắp xếp các cột hiển thị theo đúng thứ tự yêu cầu
+                # ---> BỘ LỌC TRÙNG LẶP THÔNG MINH <---
+                # Ưu tiên những dòng có Doanh thu (Giá thuê cao hơn) nằm ở trên cùng
+                df_view_hd = df_view_hd.sort_values(by=['Giá thuê'], ascending=False)
+                # Dựa vào Tòa, Mã căn và Thời hạn HĐ, nếu trùng nhau thì xóa dòng dưới, giữ dòng trên (dòng có tiền)
+                df_view_hd = df_view_hd.drop_duplicates(subset=['Toà', 'Mã căn', 'Thời hạn HĐ'], keep='first')
+                # Sắp xếp lại danh sách theo thứ tự phòng cho đẹp
+                df_view_hd = df_view_hd.sort_values(by=['Toà', 'Mã căn'])
+                # -------------------------------------
+
                 cols_show = [
                     "Toà", "Mã căn", "Chủ nhà - sale", "Thời hạn HĐ", "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà",
                     "Trạng thái", "Thời hạn cho thuê", "Giá thuê", "Lợi nhuận ròng"
@@ -550,18 +553,15 @@ if sh:
                 df_display_hd = df_view_hd[cols_exist].copy()
                 df_export_hd = df_display_hd.copy() 
                 
-                # Format tiền VND
                 num_cols = ["Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Giá thuê", "Lợi nhuận ròng"]
                 for c in num_cols: 
                     if c in df_display_hd.columns: 
                         df_display_hd[c] = df_display_hd[c].apply(fmt_vnd)
                 
-                # Hàm bôi đỏ lợi nhuận âm
                 def color_negative_red(val):
                     color = 'red' if isinstance(val, str) and '(' in val else 'black'
                     return f'color: {color}'
                 
-                # Hiển thị bảng
                 styler = df_display_hd.style.applymap(color_negative_red, subset=['Lợi nhuận ròng']).set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'})
                 st.dataframe(styler, use_container_width=True)
                 st.download_button("📥 Tải Excel CPHĐ", convert_df_to_excel(df_export_hd), f"CP_HopDong_{m_hd}_{y_hd}.xlsx")
