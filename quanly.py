@@ -70,22 +70,21 @@ def connect_google_sheet(uploaded_file=None):
     try:
         creds_dict = None
         
-        # ƯU TIÊN 1: Đọc từ Két sắt bảo mật của Streamlit (dạng chuỗi văn bản TOML)
+        # ƯU TIÊN 1: Đọc từ Két sắt bảo mật của Streamlit
         if "google_credentials" in st.secrets:
             creds_dict = json.loads(st.secrets["google_credentials"])
             
-        # ƯU TIÊN 2: Đọc file key.json (Nếu bạn chạy thử trên máy tính cá nhân)
+        # ƯU TIÊN 2: Đọc file key.json (máy tính cá nhân)
         elif os.path.exists("key.json"):
             with open("key.json", "r", encoding="utf-8") as f:
                 creds_dict = json.load(f)
                 
-        # ƯU TIÊN 3: Nếu người dùng upload file từ giao diện
+        # ƯU TIÊN 3: Upload file từ giao diện
         elif uploaded_file is not None:
             file_content = uploaded_file.read().decode("utf-8")
             creds_dict = json.loads(file_content)
             
         if creds_dict:
-            # Sửa lỗi mất dấu xuống dòng của file JSON (nguyên nhân gây lỗi JWT)
             if 'private_key' in creds_dict:
                 creds_dict['private_key'] = creds_dict['private_key'].replace('\\\\n', '\n').replace('\\n', '\n')
             
@@ -222,7 +221,7 @@ if sh:
         return df_grouped
 
     # ==============================================================================
-    # 4. TẢI VÀ CHUẨN HÓA DỮ LIỆU ĐẦU VÀO TỪ GOOGLE SHEET
+    # 4. TẢI VÀ CHUẨN HÓA DỮ LIỆU ĐẦU VÀO
     # ==============================================================================
     df_main = load_data("HOP_DONG")
     df_cp = load_data("CHI_PHI")
@@ -244,31 +243,39 @@ if sh:
             if c in df_main.columns: df_main[c] = df_main[c].apply(clean_money)
 
     # ==============================================================================
-    # 5. SIDEBAR: THÔNG BÁO TÓM TẮT
+    # 5. SIDEBAR: THÔNG BÁO TÓM TẮT (TÁCH ĐÔI LOẠI PHÒNG TRỐNG)
     # ==============================================================================
     with st.sidebar:
         st.divider()
         st.header("🔔 Tóm tắt Thông Báo")
         today = pd.Timestamp(date.today())
+        
         if not df_main.empty:
             df_alert_base = gop_du_lieu_phong(df_main)
             
-            # Cảnh báo hết HĐ chủ nhà
             df_hd = df_alert_base[(df_alert_base['Ngày hết HĐ'].notna()) & ((df_alert_base['Ngày hết HĐ'] - today).dt.days.between(-999, 30))]
-            
-            # Cảnh báo khách sắp ra
             df_kh = df_alert_base[(df_alert_base['Ngày out'].notna()) & ((df_alert_base['Ngày out'] - today).dt.days.between(0, 7))]
 
-            # BỘ LỌC PHÒNG TRỐNG: Không có ngày In/Out hợp lệ bao trùm ngày hôm nay
-            def is_empty_room(row):
+            # Hàm check trạng thái Khách
+            def check_tenant_active(row):
                 if pd.notna(row['Ngày in']) and pd.notna(row['Ngày out']):
-                    if row['Ngày in'] <= today <= row['Ngày out']:
-                        return False # Đang có khách
-                return True # Trống
-            
-            df_trong = df_alert_base[df_alert_base.apply(is_empty_room, axis=1)]
+                    return row['Ngày in'] <= today <= row['Ngày out']
+                return False
 
-            if df_hd.empty and df_kh.empty and df_trong.empty: 
+            # Hàm check trạng thái HĐ Chủ
+            def check_owner_active(row):
+                if pd.notna(row['Ngày ký']) and pd.notna(row['Ngày hết HĐ']):
+                    return row['Ngày ký'] <= today <= row['Ngày hết HĐ']
+                return False
+
+            df_alert_base['has_tenant'] = df_alert_base.apply(check_tenant_active, axis=1)
+            df_alert_base['has_owner'] = df_alert_base.apply(check_owner_active, axis=1)
+
+            # Tách 2 danh sách trống
+            df_trong_co_hd = df_alert_base[(~df_alert_base['has_tenant']) & (df_alert_base['has_owner'])]
+            df_trong_khong_hd = df_alert_base[(~df_alert_base['has_tenant']) & (~df_alert_base['has_owner'])]
+
+            if df_hd.empty and df_kh.empty and df_trong_co_hd.empty and df_trong_khong_hd.empty: 
                 st.success("✅ Ổn định. Lấp đầy 100%.")
             else:
                 if not df_hd.empty:
@@ -286,13 +293,21 @@ if sh:
                         toa_nha = str(r.get('Toà', 'Chưa rõ')).strip()
                         st.markdown(f"**🚪 P.{r['Mã căn']}** ({toa_nha}) - Còn {days_left} ngày")
 
-                if not df_trong.empty:
-                    st.info(f"🔵 {len(df_trong)} Phòng đang trống")
-                    for _, r in df_trong.iterrows(): 
+                # Cảnh báo gánh phí
+                if not df_trong_co_hd.empty:
+                    st.error(f"🔵 {len(df_trong_co_hd)} Trống - Đang gánh phí")
+                    for _, r in df_trong_co_hd.iterrows(): 
+                        toa_nha = str(r.get('Toà', 'Chưa rõ')).strip()
+                        st.markdown(f"**🔴 P.{r['Mã căn']}** ({toa_nha})")
+
+                # Cảnh báo nhàn rỗi
+                if not df_trong_khong_hd.empty:
+                    st.info(f"⚪ {len(df_trong_khong_hd)} Trống - Không HĐ chủ")
+                    for _, r in df_trong_khong_hd.iterrows(): 
                         toa_nha = str(r.get('Toà', 'Chưa rõ')).strip()
                         st.markdown(f"**⚪ P.{r['Mã căn']}** ({toa_nha})")
         
-        st.info("👉 Vào Tab **Cảnh Báo** để xem chi tiết và lấy mẫu tin nhắn.")
+        st.info("👉 Vào Tab **Cảnh Báo** để xem chi tiết.")
         st.divider()
         if st.button("🔄 Tải lại dữ liệu", use_container_width=True): 
             st.cache_data.clear()
@@ -375,9 +390,10 @@ if sh:
         df_cp_show["Tiền"] = df_cp_show["Tiền"].apply(fmt_vnd)
         st.dataframe(df_cp_show, use_container_width=True, column_config={"Ngày": st.column_config.DateColumn(format="DD/MM/YY")})
 
+    # --- TAB 3: DỮ LIỆU GỐC (BỔ SUNG QUYỀN XÓA DÒNG num_rows="dynamic") ---
     with tabs[3]:
-        st.subheader("📋 Dữ Liệu Gốc")
-        st.info("💡 Sửa trực tiếp trên bảng và bấm Lưu để cập nhật số liệu chuẩn xác lên mây.")
+        st.subheader("📋 Dữ Liệu Gốc (Có thể Thêm/Xóa dòng)")
+        st.info("💡 Để **XÓA DÒNG**, bạn hãy click vào cột ngoài cùng bên trái của dòng đó, rồi nhấn phím `Delete` trên bàn phím (hoặc biểu tượng thùng rác). Sau đó bấm **LƯU DỮ LIỆU GỐC**.")
         df_edit = df_main.copy()
         for c in COLS_MONEY:
             if c in df_edit.columns: 
@@ -386,6 +402,7 @@ if sh:
         edited_df = st.data_editor(
             df_edit, 
             use_container_width=True,
+            num_rows="dynamic", # KÍCH HOẠT TÍNH NĂNG XÓA/THÊM DÒNG
             column_config={
                 "Ngày ký": st.column_config.DateColumn(format="DD/MM/YY"),
                 "Ngày hết HĐ": st.column_config.DateColumn(format="DD/MM/YY"),
@@ -400,6 +417,7 @@ if sh:
             save_data(df_to_save, "HOP_DONG")
             time.sleep(1); st.rerun()
 
+    # --- TAB 4: TRUNG TÂM CẢNH BÁO (TÁCH 2 LOẠI PHÒNG TRỐNG) ---
     with tabs[4]:
         st.subheader("🏠 Trung Tâm Cảnh Báo Chi Tiết")
         if not df_main.empty:
@@ -469,32 +487,45 @@ if sh:
 
             st.divider()
 
-            st.write("#### 3️⃣ Danh sách Phòng Trống (Chưa có khách thuê)")
-            def check_empty_tab(row):
-                if pd.notna(row['Ngày in']) and pd.notna(row['Ngày out']):
-                    if row['Ngày in'] <= today <= row['Ngày out']:
-                        return False # Đang có khách
-                return True # Trống
+            # TÍNH TOÁN LẠI ĐỂ TÁCH 2 MỤC PHÒNG TRỐNG
+            df_alert_tab['has_tenant_4'] = df_alert_tab.apply(lambda r: (r['Ngày in'] <= today <= r['Ngày out']) if pd.notna(r['Ngày in']) and pd.notna(r['Ngày out']) else False, axis=1)
+            df_alert_tab['has_owner_4'] = df_alert_tab.apply(lambda r: (r['Ngày ký'] <= today <= r['Ngày hết HĐ']) if pd.notna(r['Ngày ký']) and pd.notna(r['Ngày hết HĐ']) else False, axis=1)
 
-            df_warning_trong = df_alert_tab[df_alert_tab.apply(check_empty_tab, axis=1)]
-            
-            if df_warning_trong.empty:
-                st.success("✅ Đã lấp đầy 100%, không có phòng trống.")
+            df_tab_trong_co_hd = df_alert_tab[(~df_alert_tab['has_tenant_4']) & (df_alert_tab['has_owner_4'])]
+            df_tab_trong_khong_hd = df_alert_tab[(~df_alert_tab['has_tenant_4']) & (~df_alert_tab['has_owner_4'])]
+
+            st.write("#### 3️⃣ Cảnh báo Phòng Trống - ĐANG GÁNH PHÍ (Có HĐ Chủ)")
+            if df_tab_trong_co_hd.empty:
+                st.success("✅ Tuyệt vời! Không có phòng nào đang trống mà phải gánh phí chủ nhà.")
             else:
-                for idx, row in df_warning_trong.iterrows():
+                for idx, row in df_tab_trong_co_hd.iterrows():
                     toa_nha = str(row.get('Toà', 'Chưa rõ')).strip()
                     chu_nha = str(row.get('Chủ nhà - sale', 'Chưa rõ'))
                     gia_hd = row.get('Giá HĐ', 0)
                     
-                    with st.expander(f"⚪ Tòa {toa_nha} - P.{row['Mã căn']} (Đang Trống)"):
+                    with st.expander(f"🔴 Tòa {toa_nha} - P.{row['Mã căn']} (Đang rớt tiền)"):
                         c1, c2 = st.columns(2)
                         c1.markdown(f"**Chủ nhà/Sale:** {chu_nha}")
-                        c2.markdown(f"**Giá vốn (HĐ chủ):** {fmt_vnd(gia_hd)}")
+                        c2.markdown(f"**Giá vốn đang gánh:** {fmt_vnd(gia_hd)}")
                         
-                        st.markdown("📝 **Mẫu tin nhắn đẩy Sale:**")
-                        st.code(f"Phòng {row['Mã căn']} tòa {toa_nha} hiện đang trống. Giá gốc chủ nhà là {fmt_vnd(gia_hd)}. ACE có khách chốt ngay giúp quản lý nhé!", language="text")
+                        st.markdown("📝 **Mẫu tin nhắn Push Sale:**")
+                        st.code(f"🚨 SOS: Phòng {row['Mã căn']} tòa {toa_nha} hiện đang trống và đang phải gánh phí chủ nhà ({fmt_vnd(gia_hd)}). ACE tập trung push khách chốt lấp đầy ngay giúp quản lý nhé!", language="text")
 
-    # --- TAB 5: QUẢN LÝ CHI PHÍ HỢP ĐỒNG (CÓ BẢNG TỔNG HỢP TRÊN ĐẦU) ---
+            st.divider()
+
+            st.write("#### 4️⃣ Danh sách Phòng Trống - THUẦN (Không có HĐ Chủ)")
+            if df_tab_trong_khong_hd.empty:
+                st.info("Hiện không có quỹ phòng trống dự trữ.")
+            else:
+                for idx, row in df_tab_trong_khong_hd.iterrows():
+                    toa_nha = str(row.get('Toà', 'Chưa rõ')).strip()
+                    
+                    with st.expander(f"⚪ Tòa {toa_nha} - P.{row['Mã căn']} (Trống nhàn rỗi)"):
+                        st.markdown("Phòng này hiện tại không có khách thuê và cũng chưa ký (hoặc đã hết hạn) hợp đồng với chủ nhà. Không phát sinh chi phí.")
+                        st.markdown("📝 **Mẫu tin nhắn Sale:**")
+                        st.code(f"Phòng {row['Mã căn']} tòa {toa_nha} hiện đang sẵn sàng để ký mới. ACE có khách báo lại BQL để làm việc với chủ nhà chốt giá nhé.", language="text")
+
+    # --- TAB 5: QUẢN LÝ CHI PHÍ HỢP ĐỒNG ---
     with tabs[5]:
         st.subheader("🏢 Quản Lý Chi Phí Hợp Đồng (Trả Chủ Nhà)")
         col1, col2 = st.columns(2)
@@ -581,7 +612,7 @@ if sh:
             else:
                 st.warning(f"Không có căn nào có Giá HĐ > 0 hoạt động trong tháng {m_hd}/{y_hd}")
 
-    # --- TAB 6: QUẢN LÝ CHI PHÍ CHO THUÊ (TÁCH 2 NHÓM TỔNG HỢP TRÊN ĐẦU) ---
+    # --- TAB 6: QUẢN LÝ CHI PHÍ CHO THUÊ ---
     with tabs[6]:
         st.subheader("🏠 Quản Lý Chi Phí Cho Thuê (Thu Khách Hàng)")
         col1, col2 = st.columns(2)
