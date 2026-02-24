@@ -70,22 +70,21 @@ def connect_google_sheet(uploaded_file=None):
     try:
         creds_dict = None
         
-        # ƯU TIÊN 1: Đọc từ Két sắt bảo mật của Streamlit (dạng chuỗi văn bản TOML)
+        # ƯU TIÊN 1: Đọc từ Két sắt bảo mật của Streamlit
         if "google_credentials" in st.secrets:
             creds_dict = json.loads(st.secrets["google_credentials"])
             
-        # ƯU TIÊN 2: Đọc file key.json (Nếu bạn chạy thử trên máy tính cá nhân)
+        # ƯU TIÊN 2: Đọc file key.json (máy tính cá nhân)
         elif os.path.exists("key.json"):
             with open("key.json", "r", encoding="utf-8") as f:
                 creds_dict = json.load(f)
                 
-        # ƯU TIÊN 3: Nếu người dùng upload file từ giao diện
+        # ƯU TIÊN 3: Upload file từ giao diện
         elif uploaded_file is not None:
             file_content = uploaded_file.read().decode("utf-8")
             creds_dict = json.loads(file_content)
             
         if creds_dict:
-            # Sửa lỗi mất dấu xuống dòng của file JSON (nguyên nhân gây lỗi JWT)
             if 'private_key' in creds_dict:
                 creds_dict['private_key'] = creds_dict['private_key'].replace('\\\\n', '\n').replace('\\n', '\n')
             
@@ -347,7 +346,7 @@ if sh:
             loai = c3.selectbox("Loại", ["Điện", "Nước", "Net", "Dọn dẹp", "Khác"])
             tien = c4.number_input("Tiền", step=10000.0)
             if st.form_submit_button("Lưu"):
-                new = pd.DataFrame([{"Mã căn": str(can).strip(), "Loại": loai, "Tiền": tien, "Ngày": pd.to_datetime(d), "Chỉ số đồng hồ": ""}])
+                new = pd.DataFrame([{"Mã căn": str(can).strip().upper(), "Loại": loai, "Tiền": tien, "Ngày": pd.to_datetime(d), "Chỉ số đồng hồ": ""}])
                 save_data(pd.concat([df_cp, new], ignore_index=True), "CHI_PHI"); time.sleep(1); st.rerun()
         
         df_cp_show = df_cp.copy()
@@ -483,7 +482,7 @@ if sh:
             else:
                 st.warning(f"Không có hợp đồng nào hoạt động trong tháng {m6}/{y6}")
 
-    # --- TAB 7: QUẢN LÝ CHI PHÍ HỢP ĐỒNG (TÁCH DÒNG, KHÔNG GỘP) ---
+    # --- TAB 7: QUẢN LÝ CHI PHÍ HỢP ĐỒNG (TÁCH DÒNG + THÊM CỘT LỢI NHUẬN) ---
     with tabs[6]:
         st.subheader("🏢 Quản Lý Chi Phí Hợp Đồng (Trả Chủ Nhà)")
         col1, col2 = st.columns(2)
@@ -496,37 +495,75 @@ if sh:
         else: end_mo_hd = pd.Timestamp(y_hd, m_hd + 1, 1) - pd.Timedelta(days=1)
 
         if not df_main.empty:
-            # SỬ DỤNG TRỰC TIẾP df_main THAY VÌ df_agg ĐỂ KHÔNG BỊ GỘP DÒNG
             df_raw_hd = df_main.copy()
             
-            def is_active_hd_raw(row):
+            def process_row_hd(row):
+                # 1. Kiểm tra xem hợp đồng chủ nhà có active trong tháng chọn không
+                hd_active = False
                 if pd.notna(row['Ngày ký']) and pd.notna(row['Ngày hết HĐ']):
                     if row['Ngày ký'] <= end_mo_hd and row['Ngày hết HĐ'] >= start_mo_hd: 
-                        return True
-                return False
+                        hd_active = True
+                
+                # Nếu không active HOẶC giá HĐ = 0 thì loại bỏ dòng này
+                if not hd_active or row.get('Giá HĐ', 0) <= 0:
+                    return pd.Series([False, "", "", "", 0, 0], 
+                                     index=['_keep', 'Thời hạn HĐ', 'Trạng thái', 'Thời hạn cho thuê', 'Giá thuê', 'Lợi nhuận ròng'])
+
+                # Format lại thời hạn hợp đồng với chủ nhà
+                thoi_han_hd = f"{fmt_date(row['Ngày ký'])} - {fmt_date(row['Ngày hết HĐ'])}"
+
+                # 2. Kiểm tra xem TRONG THÁNG NÀY phòng đó có khách thuê không
+                tenant_active = False
+                if pd.notna(row['Ngày in']) and pd.notna(row['Ngày out']):
+                    if row['Ngày in'] <= end_mo_hd and row['Ngày out'] >= start_mo_hd:
+                        tenant_active = True
+
+                if tenant_active:
+                    trang_thai = "Đã có khách thuê"
+                    thoi_han_thue = f"{fmt_date(row['Ngày in'])} - {fmt_date(row['Ngày out'])}"
+                    gia_thue = row.get('Giá', 0)
+                else:
+                    trang_thai = "Trống"
+                    thoi_han_thue = "N/A"
+                    gia_thue = 0
+
+                # Tính lợi nhuận ròng (sẽ âm nếu phòng trống)
+                loi_nhuan = gia_thue - row.get('Giá HĐ', 0)
+
+                return pd.Series([True, thoi_han_hd, trang_thai, thoi_han_thue, gia_thue, loi_nhuan], 
+                                 index=['_keep', 'Thời hạn HĐ', 'Trạng thái', 'Thời hạn cho thuê', 'Giá thuê', 'Lợi nhuận ròng'])
+
+            # Áp dụng hàm tính toán logic trên
+            hd_calcs = df_raw_hd.apply(process_row_hd, axis=1)
+            df_view_hd = pd.concat([df_raw_hd, hd_calcs], axis=1)
             
-            df_view_hd = df_raw_hd[df_raw_hd.apply(is_active_hd_raw, axis=1)].copy()
-            
-            # Lọc chỉ lấy những căn có Giá HĐ > 0
-            df_view_hd = df_view_hd[df_view_hd['Giá HĐ'] > 0]
+            # Lọc giữ lại các dòng hợp lệ
+            df_view_hd = df_view_hd[df_view_hd['_keep'] == True]
             
             if not df_view_hd.empty:
-                # Format ngày để tạo cột Thời hạn HĐ cho dễ nhìn
-                df_view_hd['Ngày ký hiển thị'] = df_view_hd['Ngày ký'].apply(fmt_date)
-                df_view_hd['Ngày hết HĐ hiển thị'] = df_view_hd['Ngày hết HĐ'].apply(fmt_date)
-                df_view_hd['Thời hạn HĐ'] = df_view_hd['Ngày ký hiển thị'] + " - " + df_view_hd['Ngày hết HĐ hiển thị']
-
-                # Chỉ lấy các cột liên quan đến chủ nhà
-                cols_show = ["Toà", "Mã căn", "Chủ nhà - sale", "Thời hạn HĐ", "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà"]
+                # Sắp xếp các cột hiển thị theo đúng thứ tự yêu cầu
+                cols_show = [
+                    "Toà", "Mã căn", "Chủ nhà - sale", "Thời hạn HĐ", "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà",
+                    "Trạng thái", "Thời hạn cho thuê", "Giá thuê", "Lợi nhuận ròng"
+                ]
                 cols_exist = [c for c in cols_show if c in df_view_hd.columns]
                 df_display_hd = df_view_hd[cols_exist].copy()
                 df_export_hd = df_display_hd.copy() 
                 
-                num_cols = ["Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà"]
+                # Format tiền VND
+                num_cols = ["Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Giá thuê", "Lợi nhuận ròng"]
                 for c in num_cols: 
-                    if c in df_display_hd.columns: df_display_hd[c] = df_display_hd[c].apply(fmt_vnd)
+                    if c in df_display_hd.columns: 
+                        df_display_hd[c] = df_display_hd[c].apply(fmt_vnd)
                 
-                st.dataframe(df_display_hd.style.set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'}), use_container_width=True)
+                # Hàm bôi đỏ lợi nhuận âm
+                def color_negative_red(val):
+                    color = 'red' if isinstance(val, str) and '(' in val else 'black'
+                    return f'color: {color}'
+                
+                # Hiển thị bảng
+                styler = df_display_hd.style.applymap(color_negative_red, subset=['Lợi nhuận ròng']).set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'})
+                st.dataframe(styler, use_container_width=True)
                 st.download_button("📥 Tải Excel CPHĐ", convert_df_to_excel(df_export_hd), f"CP_HopDong_{m_hd}_{y_hd}.xlsx")
             else:
                 st.warning(f"Không có căn nào có Giá HĐ > 0 hoạt động trong tháng {m_hd}/{y_hd}")
