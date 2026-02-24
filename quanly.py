@@ -313,7 +313,6 @@ if sh:
     # ==============================================================================
     # 6. GIAO DIỆN CHÍNH (TABS)
     # ==============================================================================
-    # Đã thay đổi thứ tự Tab theo yêu cầu
     tabs = st.tabs([
         "✍️ Nhập Liệu", "📥 Upload Excel", "💸 Chi Phí Nội Bộ", 
         "📋 Dữ Liệu Gốc", "🏠 Cảnh Báo", 
@@ -518,7 +517,6 @@ if sh:
                         st.markdown("📝 **Mẫu tin nhắn Sale:**")
                         st.code(f"Phòng {row['Mã căn']} tòa {toa_nha} hiện đang sẵn sàng để ký mới. ACE có khách báo lại BQL để làm việc với chủ nhà chốt giá nhé.", language="text")
 
-    # --- TAB 5: QUẢN LÝ CHI PHÍ HỢP ĐỒNG ---
     with tabs[5]:
         st.subheader("🏢 Quản Lý Chi Phí Hợp Đồng (Trả Chủ Nhà)")
         col1, col2 = st.columns(2)
@@ -605,7 +603,6 @@ if sh:
             else:
                 st.warning(f"Không có căn nào có Giá HĐ > 0 hoạt động trong tháng {m_hd}/{y_hd}")
 
-    # --- TAB 6: QUẢN LÝ CHI PHÍ CHO THUÊ ---
     with tabs[6]:
         st.subheader("🏠 Quản Lý Chi Phí Cho Thuê (Thu Khách Hàng)")
         col1, col2 = st.columns(2)
@@ -706,7 +703,6 @@ if sh:
             else:
                 st.warning(f"Không có căn nào có Giá thuê > 0 hoạt động trong tháng {m_ct}/{y_ct}")
 
-    # --- TAB 7: QUẢN LÝ TỔNG (HIỂN THỊ DỮ LIỆU THÔ, KHÔNG GỘP) ---
     with tabs[7]:
         st.subheader("💰 Quản Lý Tổng Hợp (Lọc theo Tháng - Không gộp dòng)")
         col1, col2 = st.columns(2)
@@ -762,10 +758,10 @@ if sh:
             else:
                 st.warning(f"Không có dữ liệu hoạt động trong tháng {m_chung}/{y_chung}")
 
-    # --- TAB 8: THEO DÕI HĐKD (MỚI) ---
+    # --- TAB 8: THEO DÕI HĐKD (ĐÃ TÁCH DOANH THU & CHUẨN HÓA LỢI NHUẬN) ---
     with tabs[8]:
         st.subheader("📈 Theo Dõi Hoạt Động Kinh Doanh")
-        st.write("Báo cáo tự động tính toán dòng tiền thu - chi - lợi nhuận từ đầu năm đến tháng hiện tại.")
+        st.write("Báo cáo tự động tính toán dòng tiền thu - chi - lợi nhuận (Chỉ tính các phòng đã có Hợp đồng gốc). Các khoản thu chưa có HĐ gốc được tách theo dõi riêng.")
         
         current_year = date.today().year
         current_month = date.today().month
@@ -827,7 +823,8 @@ if sh:
                 mask_cp = (df_chiphi['Ngày'] >= start_d) & (df_chiphi['Ngày'] <= end_d)
                 chi_phi_vh = pd.to_numeric(df_chiphi.loc[mask_cp, 'Tiền'], errors='coerce').sum()
 
-            loi_nhuan = (dt_co_hd + dt_khong_hd) - chi_phi_hd - chi_phi_vh
+            # LỢI NHUẬN CHÍNH THỨC (Không cộng gộp khoản DT chưa rõ ràng)
+            loi_nhuan = dt_co_hd - chi_phi_hd - chi_phi_vh
             return dt_co_hd, dt_khong_hd, chi_phi_hd, chi_phi_vh, loi_nhuan
 
         if not df_main.empty and max_month > 0:
@@ -836,28 +833,27 @@ if sh:
                 dt_co, dt_khong, cp_hd, cp_vh, ln = calc_month_stats(df_main, df_cp, m, y_kd)
                 yearly_data.append({
                     "Tháng": f"Tháng {m}",
-                    "DT (Có HĐ gốc)": dt_co,
-                    "DT (Không HĐ gốc)": dt_khong,
-                    "Tổng Doanh Thu": dt_co + dt_khong,
-                    "Chi Phí HĐ": cp_hd,
-                    "Chi Phí Khác": cp_vh,
-                    "Lợi Nhuận Ròng": ln
+                    "Doanh Thu (Có HĐ gốc)": dt_co,
+                    "Chi Phí HĐ (Chủ nhà)": cp_hd,
+                    "Chi Phí Khác (VH)": cp_vh,
+                    "Lợi Nhuận Ròng": ln,
+                    "DT Treo (Không HĐ)": dt_khong
                 })
             
             df_year = pd.DataFrame(yearly_data)
 
             st.write(f"### 🏆 TỔNG KẾT ĐẾN THÁNG {max_month}/{y_kd}")
             t1, t2, t3, t4, t5 = st.columns(5)
-            t1.metric("Tổng DT (Có HĐ Gốc)", fmt_vnd(df_year["DT (Có HĐ gốc)"].sum()))
-            t2.metric("Tổng DT (Không HĐ Gốc)", fmt_vnd(df_year["DT (Không HĐ gốc)"].sum()))
-            t3.metric("Tổng Trả Chủ Nhà", fmt_vnd(df_year["Chi Phí HĐ"].sum()))
-            t4.metric("Tổng Chi Phí Khác", fmt_vnd(df_year["Chi Phí Khác"].sum()))
-            t5.metric("Lợi Nhuận Ròng", fmt_vnd(df_year["Lợi Nhuận Ròng"].sum()), delta_color="normal" if df_year["Lợi Nhuận Ròng"].sum() > 0 else "inverse")
+            t1.metric("Doanh Thu (Có HĐ Gốc)", fmt_vnd(df_year["Doanh Thu (Có HĐ gốc)"].sum()))
+            t2.metric("Chi Phí Trả Chủ Nhà", fmt_vnd(df_year["Chi Phí HĐ (Chủ nhà)"].sum()))
+            t3.metric("Chi Phí Khác", fmt_vnd(df_year["Chi Phí Khác (VH)"].sum()))
+            t4.metric("Lợi Nhuận Ròng", fmt_vnd(df_year["Lợi Nhuận Ròng"].sum()), delta_color="normal" if df_year["Lợi Nhuận Ròng"].sum() > 0 else "inverse")
+            t5.metric("DT Treo (Không HĐ)", fmt_vnd(df_year["DT Treo (Không HĐ)"].sum()), delta_color="off")
             st.divider()
 
             st.write("#### 📑 Bảng Báo Cáo Chi Tiết Hàng Tháng")
             df_year_display = df_year.copy()
-            for col in ["DT (Có HĐ gốc)", "DT (Không HĐ gốc)", "Tổng Doanh Thu", "Chi Phí HĐ", "Chi Phí Khác", "Lợi Nhuận Ròng"]:
+            for col in ["Doanh Thu (Có HĐ gốc)", "Chi Phí HĐ (Chủ nhà)", "Chi Phí Khác (VH)", "Lợi Nhuận Ròng", "DT Treo (Không HĐ)"]:
                 df_year_display[col] = df_year_display[col].apply(fmt_vnd)
             
             def color_negative_red_year(val):
