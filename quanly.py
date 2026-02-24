@@ -303,7 +303,7 @@ if sh:
             st.cache_data.clear()
             st.rerun()
 
-    DANH_SACH_NHA = { "Tòa A": ["A101"], "Tòa B": ["B101"], "Khác": [] }
+    DANH_SACH_NHA = { "MT60": [], "MT61": [], "OC1A": [], "OC1B": [], "OC2A": [], "OC2B": [], "OC3": [] }
 
     # ==============================================================================
     # 6. GIAO DIỆN CHÍNH (TABS)
