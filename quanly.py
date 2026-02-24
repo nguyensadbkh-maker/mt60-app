@@ -281,12 +281,12 @@ if sh:
     DANH_SACH_NHA = { "Tòa A": ["A101"], "Tòa B": ["B101"], "Khác": [] }
 
     # ==============================================================================
-    # 6. GIAO DIỆN CHÍNH (TABS) ĐÃ CẬP NHẬT
+    # 6. GIAO DIỆN CHÍNH (TABS)
     # ==============================================================================
     tabs = st.tabs([
         "✍️ Nhập Liệu", "📥 Upload Excel", "💸 Chi Phí Nội Bộ", 
         "📋 Dữ Liệu Gốc", "🏠 Cảnh Báo", 
-        "💰 Quản Lý Hợp Đồng", "🏢 CP Hợp Đồng", "🏠 CP Cho Thuê", # <-- Thêm 2 Tab ở đây
+        "💰 Quản Lý Hợp Đồng", "🏢 CP Hợp Đồng", "🏠 CP Cho Thuê",
         "📊 Lợi Nhuận (All)", "💸 Dòng Tiền Tháng", "📅 Quyết Toán Thuế" 
     ])
 
@@ -356,8 +356,7 @@ if sh:
 
     with tabs[3]:
         st.subheader("📋 Dữ Liệu Gốc")
-        st.info("💡 Bạn có thể SỬA TRỰC TIẾP các lỗi số khổng lồ tại bảng này và bấm Lưu.")
-        
+        st.info("💡 Sửa trực tiếp trên bảng và bấm Lưu để cập nhật số liệu chuẩn xác lên mây.")
         df_edit = df_main.copy()
         for c in COLS_MONEY:
             if c in df_edit.columns: 
@@ -484,7 +483,7 @@ if sh:
             else:
                 st.warning(f"Không có hợp đồng nào hoạt động trong tháng {m6}/{y6}")
 
-    # --- TAB 7: QUẢN LÝ CHI PHÍ HỢP ĐỒNG (Giá HĐ > 0) ---
+    # --- TAB 7: QUẢN LÝ CHI PHÍ HỢP ĐỒNG (TÁCH DÒNG, KHÔNG GỘP) ---
     with tabs[6]:
         st.subheader("🏢 Quản Lý Chi Phí Hợp Đồng (Trả Chủ Nhà)")
         col1, col2 = st.columns(2)
@@ -497,27 +496,37 @@ if sh:
         else: end_mo_hd = pd.Timestamp(y_hd, m_hd + 1, 1) - pd.Timedelta(days=1)
 
         if not df_main.empty:
-            df_agg = gop_du_lieu_phong(df_main)
-            def is_active_hd(row):
+            # SỬ DỤNG TRỰC TIẾP df_main THAY VÌ df_agg ĐỂ KHÔNG BỊ GỘP DÒNG
+            df_raw_hd = df_main.copy()
+            
+            def is_active_hd_raw(row):
                 if pd.notna(row['Ngày ký']) and pd.notna(row['Ngày hết HĐ']):
                     if row['Ngày ký'] <= end_mo_hd and row['Ngày hết HĐ'] >= start_mo_hd: 
                         return True
                 return False
             
-            df_view_hd = df_agg[df_agg.apply(is_active_hd, axis=1)].copy()
+            df_view_hd = df_raw_hd[df_raw_hd.apply(is_active_hd_raw, axis=1)].copy()
+            
             # Lọc chỉ lấy những căn có Giá HĐ > 0
             df_view_hd = df_view_hd[df_view_hd['Giá HĐ'] > 0]
             
             if not df_view_hd.empty:
-                cols_show = ["Toà", "Mã căn", "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Giá", "KH thanh toán", "KH cọc", "Ghi chú"]
+                # Format ngày để tạo cột Thời hạn HĐ cho dễ nhìn
+                df_view_hd['Ngày ký hiển thị'] = df_view_hd['Ngày ký'].apply(fmt_date)
+                df_view_hd['Ngày hết HĐ hiển thị'] = df_view_hd['Ngày hết HĐ'].apply(fmt_date)
+                df_view_hd['Thời hạn HĐ'] = df_view_hd['Ngày ký hiển thị'] + " - " + df_view_hd['Ngày hết HĐ hiển thị']
+
+                # Chỉ lấy các cột liên quan đến chủ nhà
+                cols_show = ["Toà", "Mã căn", "Chủ nhà - sale", "Thời hạn HĐ", "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà"]
                 cols_exist = [c for c in cols_show if c in df_view_hd.columns]
                 df_display_hd = df_view_hd[cols_exist].copy()
                 df_export_hd = df_display_hd.copy() 
-                num_cols = ["Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà", "Giá", "KH thanh toán", "KH cọc"]
+                
+                num_cols = ["Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà"]
                 for c in num_cols: 
                     if c in df_display_hd.columns: df_display_hd[c] = df_display_hd[c].apply(fmt_vnd)
                 
-                st.dataframe(df_display_hd.style.set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'}), use_container_width=True, column_config={"Ghi chú": st.column_config.TextColumn(width=500)})
+                st.dataframe(df_display_hd.style.set_properties(**{'border-color': 'lightgrey', 'border-style': 'solid', 'border-width': '1px'}), use_container_width=True)
                 st.download_button("📥 Tải Excel CPHĐ", convert_df_to_excel(df_export_hd), f"CP_HopDong_{m_hd}_{y_hd}.xlsx")
             else:
                 st.warning(f"Không có căn nào có Giá HĐ > 0 hoạt động trong tháng {m_hd}/{y_hd}")
