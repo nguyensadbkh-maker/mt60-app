@@ -22,7 +22,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ĐÃ THÊM MÃ CSS CHỈNH LẠI CỠ CHỮ CHO CÁC BẢNG TỔNG HỢP (METRIC)
 st.markdown("""
     <style>
         .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
@@ -33,12 +32,12 @@ st.markdown("""
         
         /* CSS FIX LỖI BỊ CẮT CHỮ (...) Ở CÁC TAB BÁO CÁO */
         div[data-testid="stMetricValue"] > div {
-            font-size: 1.35rem !important; /* Thu nhỏ cỡ số tiền hiển thị */
+            font-size: 1.35rem !important; 
             white-space: normal !important;
         }
         div[data-testid="stMetricLabel"] > div > div > p {
-            font-size: 0.95rem !important; /* Cỡ chữ tiêu đề bảng */
-            white-space: normal !important; /* Cho phép tiêu đề dài tự rớt dòng */
+            font-size: 0.95rem !important; 
+            white-space: normal !important; 
         }
     </style>
 """, unsafe_allow_html=True)
@@ -376,16 +375,28 @@ if sh:
                 save_data(df_up, "HOP_DONG"); time.sleep(2); st.rerun()
             except Exception as e: st.error(f"Lỗi: {e}")
 
+    # --- TAB 2: CHI PHÍ NỘI BỘ (THÊM CỘT CHỈ SỐ ĐỒNG HỒ) ---
     with tabs[2]:
         st.subheader("💸 Chi Phí Nội Bộ")
         with st.form("cp_form"):
-            c1, c2, c3, c4 = st.columns(4)
-            d = c1.date_input("Ngày", date.today()); can = c2.text_input("Mã căn")
+            c1, c2, c3, c4, c5 = st.columns(5) # Chia 5 cột
+            d = c1.date_input("Ngày", date.today())
+            can = c2.text_input("Mã căn")
             loai = c3.selectbox("Loại", ["Điện", "Nước", "Net", "Dọn dẹp", "Khác"])
-            tien = c4.number_input("Tiền", step=10000.0)
+            chi_so = c4.text_input("Chỉ số ĐH") # Nhập số hoặc chữ (VD: 1500 - 1520)
+            tien = c5.number_input("Tiền", step=10000.0)
+            
             if st.form_submit_button("Lưu"):
-                new = pd.DataFrame([{"Mã căn": str(can).strip().upper(), "Loại": loai, "Tiền": tien, "Ngày": pd.to_datetime(d), "Chỉ số đồng hồ": ""}])
-                save_data(pd.concat([df_cp, new], ignore_index=True), "CHI_PHI"); time.sleep(1); st.rerun()
+                new = pd.DataFrame([{
+                    "Mã căn": str(can).strip().upper(), 
+                    "Loại": loai, 
+                    "Tiền": tien, 
+                    "Ngày": pd.to_datetime(d), 
+                    "Chỉ số đồng hồ": str(chi_so).strip() # Ghi nhận vào DB
+                }])
+                save_data(pd.concat([df_cp, new], ignore_index=True), "CHI_PHI")
+                time.sleep(1)
+                st.rerun()
         
         df_cp_show = df_cp.copy()
         df_cp_show["Tiền"] = df_cp_show["Tiền"].apply(fmt_vnd)
@@ -523,7 +534,6 @@ if sh:
                         st.markdown("📝 **Mẫu tin nhắn Sale:**")
                         st.code(f"Phòng {row['Mã căn']} tòa {toa_nha} hiện đang sẵn sàng để ký mới. ACE có khách báo lại BQL để làm việc với chủ nhà chốt giá nhé.", language="text")
 
-    # --- TAB 5: QUẢN LÝ CHI PHÍ HỢP ĐỒNG ---
     with tabs[5]:
         st.subheader("🏢 Quản Lý Chi Phí Hợp Đồng (Trả Chủ Nhà)")
         col1, col2 = st.columns(2)
@@ -610,7 +620,6 @@ if sh:
             else:
                 st.warning(f"Không có căn nào có Giá HĐ > 0 hoạt động trong tháng {m_hd}/{y_hd}")
 
-    # --- TAB 6: QUẢN LÝ CHI PHÍ CHO THUÊ ---
     with tabs[6]:
         st.subheader("🏠 Quản Lý Chi Phí Cho Thuê (Thu Khách Hàng)")
         col1, col2 = st.columns(2)
@@ -711,7 +720,6 @@ if sh:
             else:
                 st.warning(f"Không có căn nào có Giá thuê > 0 hoạt động trong tháng {m_ct}/{y_ct}")
 
-    # --- TAB 7: QUẢN LÝ TỔNG ---
     with tabs[7]:
         st.subheader("💰 Quản Lý Tổng Hợp (Lọc theo Tháng - Không gộp dòng)")
         col1, col2 = st.columns(2)
@@ -767,7 +775,6 @@ if sh:
             else:
                 st.warning(f"Không có dữ liệu hoạt động trong tháng {m_chung}/{y_chung}")
 
-    # --- TAB 8: THEO DÕI HĐKD VÀ GIẢI TRÌNH CHI TIẾT ---
     with tabs[8]:
         st.subheader("📈 Theo Dõi Hoạt Động Kinh Doanh")
         st.write("Báo cáo tự động tính toán dòng tiền thu - chi - lợi nhuận. Bạn có thể mở từng tháng để xem giải trình chi tiết từng phòng.")
@@ -800,7 +807,6 @@ if sh:
             df_cp_vh = pd.DataFrame()
 
             if not df_raw.empty:
-                # 1. CHI PHÍ CHỦ NHÀ
                 df_hd = df_raw.copy()
                 df_hd['owner_active'] = df_hd.apply(lambda r: True if pd.notna(r['Ngày ký']) and pd.notna(r['Ngày hết HĐ']) and r['Ngày ký'] <= end_d and r['Ngày hết HĐ'] >= start_d else False, axis=1)
                 
@@ -814,7 +820,6 @@ if sh:
                     df_hd_cost = df_hd_c.drop_duplicates(subset=['Toà', 'Mã căn', 'Thời hạn HĐ'], keep='first')
                     chi_phi_hd = df_hd_cost['Giá HĐ'].sum()
 
-                # 2. DOANH THU KHÁCH
                 df_ct = df_raw.copy()
                 df_ct['tenant_active'] = df_ct.apply(lambda r: True if pd.notna(r['Ngày in']) and pd.notna(r['Ngày out']) and r['Ngày in'] <= end_d and r['Ngày out'] >= start_d else False, axis=1)
                 df_ct = df_ct[df_ct['tenant_active'] & (df_ct['Giá'] > 0)].copy()
@@ -831,7 +836,6 @@ if sh:
                     dt_co_hd = df_dt_co['Giá'].sum()
                     dt_khong_hd = df_dt_khong['Giá'].sum()
 
-            # 3. CHI PHÍ VẬN HÀNH
             if not df_chiphi.empty:
                 mask_cp = (df_chiphi['Ngày'] >= start_d) & (df_chiphi['Ngày'] <= end_d)
                 df_cp_vh = df_chiphi[mask_cp].copy()
