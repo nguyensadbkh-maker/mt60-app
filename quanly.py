@@ -70,16 +70,22 @@ def connect_google_sheet(uploaded_file=None):
     try:
         creds_dict = None
         
+        # ƯU TIÊN 1: Đọc từ Két sắt bảo mật của Streamlit (dạng chuỗi văn bản TOML)
         if "google_credentials" in st.secrets:
             creds_dict = json.loads(st.secrets["google_credentials"])
+            
+        # ƯU TIÊN 2: Đọc file key.json (Nếu bạn chạy thử trên máy tính cá nhân)
         elif os.path.exists("key.json"):
             with open("key.json", "r", encoding="utf-8") as f:
                 creds_dict = json.load(f)
+                
+        # ƯU TIÊN 3: Nếu người dùng upload file từ giao diện
         elif uploaded_file is not None:
             file_content = uploaded_file.read().decode("utf-8")
             creds_dict = json.loads(file_content)
             
         if creds_dict:
+            # Sửa lỗi mất dấu xuống dòng của file JSON (nguyên nhân gây lỗi JWT)
             if 'private_key' in creds_dict:
                 creds_dict['private_key'] = creds_dict['private_key'].replace('\\\\n', '\n').replace('\\n', '\n')
             
@@ -275,14 +281,14 @@ if sh:
     DANH_SACH_NHA = { "Tòa A": ["A101"], "Tòa B": ["B101"], "Khác": [] }
 
     # ==============================================================================
-    # 6. GIAO DIỆN CHÍNH (TABS) - ĐÃ CẬP NHẬT THỨ TỰ
+    # 6. GIAO DIỆN CHÍNH (TABS)
     # ==============================================================================
     tabs = st.tabs([
         "✍️ Nhập Liệu", "📥 Upload Excel", "💸 Chi Phí Nội Bộ", 
         "📋 Dữ Liệu Gốc", "🏠 Cảnh Báo", 
         "🏢 CP Hợp Đồng", "🏠 CP Cho Thuê",
         "📊 Lợi Nhuận (All)", "💸 Dòng Tiền Tháng", "📅 Quyết Toán Thuế",
-        "💰 Quản Lý Tổng (Raw)" # Tab cũ được đẩy xuống đây
+        "💰 Quản Lý Tổng (Raw)" 
     ])
 
     with tabs[0]:
@@ -441,7 +447,7 @@ if sh:
                         st.markdown("📝 **Mẫu tin nhắn nhắc khách:**")
                         st.code(f"Chào {khach},\nPhòng {row['Mã căn']} tòa {toa_nha} của bạn sẽ đến hạn trả phòng vào ngày {fmt_date(row['Ngày out'])}.\nBạn vui lòng chuẩn bị dọn dẹp và liên hệ BQL để chốt số điện nước, làm thủ tục bàn giao và hoàn cọc ({fmt_vnd(coc)}) nhé. Cảm ơn bạn!", language="text")
 
-    # --- TAB 5 (CŨ LÀ 6): QUẢN LÝ CHI PHÍ HỢP ĐỒNG ---
+    # --- TAB 5: QUẢN LÝ CHI PHÍ HỢP ĐỒNG (CÓ BẢNG TỔNG HỢP TRÊN ĐẦU) ---
     with tabs[5]:
         st.subheader("🏢 Quản Lý Chi Phí Hợp Đồng (Trả Chủ Nhà)")
         col1, col2 = st.columns(2)
@@ -496,6 +502,16 @@ if sh:
                 df_view_hd = df_view_hd.drop_duplicates(subset=['Toà', 'Mã căn', 'Thời hạn HĐ'], keep='first')
                 df_view_hd = df_view_hd.sort_values(by=['Toà', 'Mã căn'])
 
+                # HIỂN THỊ TỔNG HỢP METRICS CHO TAB CP HỢP ĐỒNG
+                st.write(f"#### 📊 Tổng hợp chi phí Hợp Đồng tháng {m_hd}/{y_hd}")
+                m1, m2, m3, m4, m5 = st.columns(5)
+                m1.metric("Tổng Giá HĐ (Chủ nhà)", fmt_vnd(df_view_hd['Giá HĐ'].sum()))
+                m2.metric("Tổng TT Chủ Nhà", fmt_vnd(df_view_hd['TT cho chủ nhà'].sum()))
+                m3.metric("Tổng Cọc Chủ Nhà", fmt_vnd(df_view_hd['Cọc cho chủ nhà'].sum()))
+                m4.metric("Tổng Giá Thuê (Khách)", fmt_vnd(df_view_hd['Giá thuê'].sum()))
+                m5.metric("Tổng Lợi Nhuận Ròng", fmt_vnd(df_view_hd['Lợi nhuận ròng'].sum()))
+                st.markdown("---")
+
                 cols_show = [
                     "Toà", "Mã căn", "Chủ nhà - sale", "Thời hạn HĐ", "Giá HĐ", "TT cho chủ nhà", "Cọc cho chủ nhà",
                     "Trạng thái", "Thời hạn cho thuê", "Giá thuê", "Lợi nhuận ròng"
@@ -519,7 +535,7 @@ if sh:
             else:
                 st.warning(f"Không có căn nào có Giá HĐ > 0 hoạt động trong tháng {m_hd}/{y_hd}")
 
-    # --- TAB 6 (CŨ LÀ 7): QUẢN LÝ CHI PHÍ CHO THUÊ ---
+    # --- TAB 6: QUẢN LÝ CHI PHÍ CHO THUÊ (CÓ BẢNG TỔNG HỢP TRÊN ĐẦU) ---
     with tabs[6]:
         st.subheader("🏠 Quản Lý Chi Phí Cho Thuê (Thu Khách Hàng)")
         col1, col2 = st.columns(2)
@@ -575,6 +591,16 @@ if sh:
                 df_view_ct = df_view_ct.drop_duplicates(subset=['Toà', 'Mã căn', 'Thời hạn cho thuê'], keep='first')
                 df_view_ct = df_view_ct.sort_values(by=['Toà', 'Mã căn'])
 
+                # HIỂN THỊ TỔNG HỢP METRICS CHO TAB CP CHO THUÊ
+                st.write(f"#### 📊 Tổng hợp chi phí Cho Thuê tháng {m_ct}/{y_ct}")
+                m1, m2, m3, m4, m5 = st.columns(5)
+                m1.metric("Tổng Giá Thuê (Khách)", fmt_vnd(df_view_ct['Giá'].sum()))
+                m2.metric("Tổng KH Thanh Toán", fmt_vnd(df_view_ct['KH thanh toán'].sum()))
+                m3.metric("Tổng KH Cọc", fmt_vnd(df_view_ct['KH cọc'].sum()))
+                m4.metric("Tổng Giá HĐ Chủ", fmt_vnd(df_view_ct['Giá HĐ Chủ'].sum()))
+                m5.metric("Tổng Lợi Nhuận Ròng", fmt_vnd(df_view_ct['Lợi nhuận ròng'].sum()))
+                st.markdown("---")
+
                 cols_show = [
                     "Toà", "Mã căn", "Tên khách thuê", "Thời hạn cho thuê", "Giá", "KH thanh toán", "KH cọc",
                     "Trạng thái HĐ Chủ", "Thời hạn HĐ", "Giá HĐ Chủ", "Lợi nhuận ròng"
@@ -600,7 +626,6 @@ if sh:
             else:
                 st.warning(f"Không có căn nào có Giá thuê > 0 hoạt động trong tháng {m_ct}/{y_ct}")
 
-    # --- TAB 7 (CŨ LÀ 8): LỢI NHUẬN (ALL-TIME) ---
     with tabs[7]:
         st.subheader("📊 Lợi Nhuận (All-time / Lũy kế)")
         if not df_main.empty:
@@ -622,7 +647,6 @@ if sh:
             for c in ["Doanh thu", "Giá vốn", "Chi phí Sale", "Lợi nhuận"]: df_show[c] = df_show[c].apply(fmt_vnd)
             st.dataframe(df_show.style.applymap(lambda x: 'color: red' if "(" in str(x) else '', subset=['Lợi nhuận']), use_container_width=True, column_config={"Ghi chú": st.column_config.TextColumn(width=500)})
 
-    # --- TAB 8 (CŨ LÀ 9): DÒNG TIỀN THEO THÁNG ---
     with tabs[8]:
         st.subheader("💸 Dòng Tiền Thực Tế (Phát Sinh Trong Tháng)")
         col1, col2 = st.columns(2)
@@ -692,7 +716,6 @@ if sh:
                 st.download_button("📥 Tải Báo Cáo Dòng Tiền", convert_df_to_excel(df_final_cf), f"DongTien_Thang_{m8}_{y8}.xlsx")
             else: st.warning(f"Không có dòng tiền nào phát sinh trong tháng {m8}/{y8}")
 
-    # --- TAB 9 (CŨ LÀ 10): QUYẾT TOÁN ---
     with tabs[9]:
         st.subheader("📅 Quyết Toán Doanh Thu & Thuế Hàng Tháng")
         col_t1, col_t2, col_t3 = st.columns(3)
@@ -737,7 +760,7 @@ if sh:
                 st.download_button("📥 Tải Báo Cáo Quyết Toán", convert_df_to_excel(df_month_rep), f"QuyetToan_{m9}_{y9}.xlsx")
             else: st.warning(f"Không có dữ liệu trong tháng {m9}/{y9}")
 
-    # --- TAB 10 (CŨ LÀ 5): QUẢN LÝ TỔNG (HIỂN THỊ DỮ LIỆU THÔ, KHÔNG GỘP) ---
+    # --- TAB 10: QUẢN LÝ TỔNG (HIỂN THỊ DỮ LIỆU THÔ, KHÔNG GỘP) ---
     with tabs[10]:
         st.subheader("💰 Quản Lý Tổng Hợp (Lọc theo Tháng - Không gộp dòng)")
         col1, col2 = st.columns(2)
