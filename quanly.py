@@ -22,6 +22,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ĐÃ THÊM MÃ CSS CHỈNH LẠI CỠ CHỮ CHO CÁC BẢNG TỔNG HỢP (METRIC)
 st.markdown("""
     <style>
         .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
@@ -29,6 +30,16 @@ st.markdown("""
         div[data-testid="stDataFrame"] { width: 100%; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
+        
+        /* CSS FIX LỖI BỊ CẮT CHỮ (...) Ở CÁC TAB BÁO CÁO */
+        div[data-testid="stMetricValue"] > div {
+            font-size: 1.35rem !important; /* Thu nhỏ cỡ số tiền hiển thị */
+            white-space: normal !important;
+        }
+        div[data-testid="stMetricLabel"] > div > div > p {
+            font-size: 0.95rem !important; /* Cỡ chữ tiêu đề bảng */
+            white-space: normal !important; /* Cho phép tiêu đề dài tự rớt dòng */
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -303,7 +314,7 @@ if sh:
             st.cache_data.clear()
             st.rerun()
 
-    DANH_SACH_NHA = { "MT60": [], "MT61": [], "OC1A": [], "OC1B": [], "OC2A": [], "OC2B": [], "OC3": [] }
+    DANH_SACH_NHA = { "Tòa A": ["A101"], "Tòa B": ["B101"], "Khác": [] }
 
     # ==============================================================================
     # 6. GIAO DIỆN CHÍNH (TABS)
@@ -512,6 +523,7 @@ if sh:
                         st.markdown("📝 **Mẫu tin nhắn Sale:**")
                         st.code(f"Phòng {row['Mã căn']} tòa {toa_nha} hiện đang sẵn sàng để ký mới. ACE có khách báo lại BQL để làm việc với chủ nhà chốt giá nhé.", language="text")
 
+    # --- TAB 5: QUẢN LÝ CHI PHÍ HỢP ĐỒNG ---
     with tabs[5]:
         st.subheader("🏢 Quản Lý Chi Phí Hợp Đồng (Trả Chủ Nhà)")
         col1, col2 = st.columns(2)
@@ -598,6 +610,7 @@ if sh:
             else:
                 st.warning(f"Không có căn nào có Giá HĐ > 0 hoạt động trong tháng {m_hd}/{y_hd}")
 
+    # --- TAB 6: QUẢN LÝ CHI PHÍ CHO THUÊ ---
     with tabs[6]:
         st.subheader("🏠 Quản Lý Chi Phí Cho Thuê (Thu Khách Hàng)")
         col1, col2 = st.columns(2)
@@ -698,6 +711,7 @@ if sh:
             else:
                 st.warning(f"Không có căn nào có Giá thuê > 0 hoạt động trong tháng {m_ct}/{y_ct}")
 
+    # --- TAB 7: QUẢN LÝ TỔNG ---
     with tabs[7]:
         st.subheader("💰 Quản Lý Tổng Hợp (Lọc theo Tháng - Không gộp dòng)")
         col1, col2 = st.columns(2)
@@ -770,7 +784,6 @@ if sh:
         elif y_kd > current_year:
             max_month = 0
 
-        # Hàm tính toán và TRẢ VỀ CÁC BẢNG DATA ĐỂ GIẢI TRÌNH
         def calc_month_stats_detailed(df_raw, df_chiphi, month, year):
             start_d = pd.Timestamp(year, month, 1)
             if month == 12: end_d = pd.Timestamp(year + 1, 1, 1) - pd.Timedelta(days=1)
@@ -831,7 +844,6 @@ if sh:
             yearly_data = []
             detailed_data = {}
 
-            # Chạy vòng lặp tính toán và lưu bảng chi tiết
             for m in range(1, max_month + 1):
                 dt_co, dt_khong, cp_hd, cp_vh, ln, d_dt_co, d_dt_khong, d_hd_cost, d_cp_vh = calc_month_stats_detailed(df_main, df_cp, m, y_kd)
                 yearly_data.append({
@@ -851,7 +863,6 @@ if sh:
             
             df_year = pd.DataFrame(yearly_data)
 
-            # HIỂN THỊ TỔNG QUAN
             st.write(f"### 🏆 BẢNG TỔNG KẾT ĐẾN THÁNG {max_month}/{y_kd}")
             t1, t2, t3, t4, t5 = st.columns(5)
             t1.metric("Doanh Thu (Có HĐ Gốc)", fmt_vnd(df_year["Doanh Thu (Có HĐ gốc)"].sum()))
@@ -877,7 +888,6 @@ if sh:
             st.download_button("📥 Tải Bảng Báo Cáo Tổng Excel", convert_df_to_excel(df_year), f"BaoCao_KinhDoanh_{y_kd}.xlsx")
             st.divider()
 
-            # HIỂN THỊ PHẦN GIẢI TRÌNH CHI TIẾT DƯỚI DẠNG EXPANDER
             st.write("#### 🔍 Giải trình chi tiết từng tháng")
             st.info("💡 Bấm vào từng tháng bên dưới để đối soát các phòng tạo ra Doanh thu và Chi phí.")
             
@@ -888,7 +898,6 @@ if sh:
                     t_hd, t_cp = st.tabs(["📊 Doanh Thu & Chi Phí HĐ", "🔌 Chi Phí Vận Hành"])
                     
                     with t_hd:
-                        # 1. Doanh thu có HĐ
                         st.markdown("**🟢 DOANH THU CHÍNH THỨC (Các phòng đang có HĐ Chủ)**")
                         if not d_m['dt_co'].empty:
                             df_dt_co_disp = d_m['dt_co'][['Toà', 'Mã căn', 'Tên khách thuê', 'Giá']].copy()
@@ -897,7 +906,6 @@ if sh:
                         else:
                             st.caption("Không có dữ liệu trong tháng này.")
                             
-                        # 2. Chi phí HĐ
                         st.markdown("**🔴 CHI PHÍ HỢP ĐỒNG (Tiền trả Chủ nhà)**")
                         if not d_m['cp_hd'].empty:
                             df_cp_hd_disp = d_m['cp_hd'][['Toà', 'Mã căn', 'Chủ nhà - sale', 'Giá HĐ']].copy()
@@ -906,7 +914,6 @@ if sh:
                         else:
                             st.caption("Không có chi phí trả chủ nhà trong tháng này.")
                             
-                        # 3. DT Treo
                         st.markdown("**⚪ DOANH THU TREO (Phòng có khách nhưng KHÔNG CÓ HĐ Chủ)**")
                         if not d_m['dt_khong'].empty:
                             df_dt_khong_disp = d_m['dt_khong'][['Toà', 'Mã căn', 'Tên khách thuê', 'Giá']].copy()
