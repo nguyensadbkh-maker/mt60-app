@@ -30,6 +30,7 @@ st.markdown("""
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
         
+        /* CSS FIX LỖI BỊ CẮT CHỮ (...) Ở CÁC TAB BÁO CÁO */
         div[data-testid="stMetricValue"] > div {
             font-size: 1.35rem !important; 
             white-space: normal !important;
@@ -65,7 +66,7 @@ COLS_MONEY = [
 ]
 
 # ==============================================================================
-# 2. KẾT NỐI DỮ LIỆU THÔNG MINH
+# 2. KẾT NỐI DỮ LIỆU THÔNG MINH (BẢO MẬT STREAMLIT SECRETS)
 # ==============================================================================
 
 st.title("☁️ MT60 STUDIO - QUẢN LÝ TỔNG QUAN")
@@ -78,6 +79,7 @@ def connect_google_sheet(uploaded_file=None):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
         creds_dict = None
+        
         if "google_credentials" in st.secrets:
             creds_dict = json.loads(st.secrets["google_credentials"])
         elif os.path.exists("key.json"):
@@ -90,12 +92,14 @@ def connect_google_sheet(uploaded_file=None):
         if creds_dict:
             if 'private_key' in creds_dict:
                 creds_dict['private_key'] = creds_dict['private_key'].replace('\\\\n', '\n').replace('\\n', '\n')
+            
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             client = gspread.authorize(creds)
             return client.open(SHEET_NAME)
         return None
     except Exception as e:
         st.error(f"❌ Lỗi kết nối. Vui lòng kiểm tra lại file JSON hoặc Streamlit Secrets.")
+        st.error(f"Chi tiết kỹ thuật: {e}")
         return None
 
 sh = None
@@ -302,7 +306,7 @@ if sh:
                         toa_nha = str(r.get('Toà', 'Chưa rõ')).strip()
                         st.markdown(f"**⚪ P.{r['Mã căn']}** ({toa_nha})")
         
-        st.info("👉 Vào Tab **Cảnh Báo** để xem chi tiết & Xử lý.")
+        st.info("👉 Vào Tab **Cảnh Báo** để xem chi tiết.")
         st.divider()
         if st.button("🔄 Tải lại dữ liệu", use_container_width=True): 
             st.cache_data.clear()
@@ -450,9 +454,10 @@ if sh:
             with c3_2: ngay_in = st.date_input("Ngày khách vào (In)", value=fd['ngay_in'])
             with c3_3: ngay_out = st.date_input("Ngày khách ra (Out)", value=fd['ngay_out'])
             
-            c3_4, c3_5 = st.columns(2)
+            c3_4, c3_5, c3_6 = st.columns(3)
             with c3_4: gia_thue = st.number_input("Giá thuê khách trả", step=100000, value=int(fd['gia_thue']))
             with c3_5: kh_coc = st.number_input("Khách cọc", step=100000, value=int(fd['kh_coc']))
+            with c3_6: kh_tt = st.number_input("Khách thanh toán", step=100000, value=0)
 
             st.divider()
 
@@ -461,7 +466,7 @@ if sh:
             with c4_1: sale_thao = st.number_input("Hoa hồng Thảo", step=50000, value=int(fd['sale_thao']))
             with c4_2: sale_nga = st.number_input("Hoa hồng Nga", step=50000, value=int(fd['sale_nga']))
             with c4_3: sale_linh = st.number_input("Hoa hồng Linh", step=50000, value=int(fd['sale_linh']))
-            with c4_4: cong_ty = st.number_input("Chi phí Công ty", step=50000, value=int(fd['cong_ty']))
+            with c4_4: cong_ty = st.number_input("Công ty", step=50000, value=int(fd['cong_ty']))
             with c4_5: ca_nhan = st.number_input("Cá Nhân", step=50000, value=int(fd['ca_nhan']))
             
             st.markdown("<br>", unsafe_allow_html=True)
@@ -472,7 +477,7 @@ if sh:
                     "Ngày ký": pd.to_datetime(ngay_ky), "Ngày hết HĐ": pd.to_datetime(ngay_het_hd), "Giá HĐ": gia_hd,
                     "TT cho chủ nhà": tt_chu_nha, "Cọc cho chủ nhà": coc_chu_nha,
                     "Tên khách thuê": ten_khach, "Ngày in": pd.to_datetime(ngay_in), "Ngày out": pd.to_datetime(ngay_out),
-                    "Giá": gia_thue, "KH cọc": kh_coc, "KH thanh toán": 0, 
+                    "Giá": gia_thue, "KH cọc": kh_coc, "KH thanh toán": kh_tt, 
                     "Công ty": cong_ty, "Cá Nhân": ca_nhan, 
                     "SALE THẢO": sale_thao, "SALE NGA": sale_nga, "SALE LINH": sale_linh,
                     "Hết hạn khách hàng": "", "Ráp khách khi hết hạn": ""
@@ -487,7 +492,7 @@ if sh:
                     new_data_2["Giá HĐ"] = gd2_gia
                     new_data_2["TT cho chủ nhà"] = 0; new_data_2["Cọc cho chủ nhà"] = 0
                     new_data_2["Tên khách thuê"] = ""; new_data_2["Ngày in"] = ""; new_data_2["Ngày out"] = ""
-                    new_data_2["Giá"] = 0; new_data_2["KH cọc"] = 0
+                    new_data_2["Giá"] = 0; new_data_2["KH cọc"] = 0; new_data_2["KH thanh toán"] = 0
                     for k in ["SALE THẢO", "SALE NGA", "SALE LINH", "Công ty", "Cá Nhân"]: new_data_2[k] = 0
                     rows_to_add.append(new_data_2)
 
@@ -498,7 +503,7 @@ if sh:
                     new_data_3["Giá HĐ"] = gd3_gia
                     new_data_3["TT cho chủ nhà"] = 0; new_data_3["Cọc cho chủ nhà"] = 0
                     new_data_3["Tên khách thuê"] = ""; new_data_3["Ngày in"] = ""; new_data_3["Ngày out"] = ""
-                    new_data_3["Giá"] = 0; new_data_3["KH cọc"] = 0
+                    new_data_3["Giá"] = 0; new_data_3["KH cọc"] = 0; new_data_3["KH thanh toán"] = 0
                     for k in ["SALE THẢO", "SALE NGA", "SALE LINH", "Công ty", "Cá Nhân"]: new_data_3[k] = 0
                     rows_to_add.append(new_data_3)
 
@@ -586,7 +591,6 @@ if sh:
             df_alert_tab = gop_du_lieu_phong(df_main)
             today = pd.Timestamp(date.today())
             
-            # Helper function to get exact latest owner info from RAW data
             def get_latest_owner_info(ma_can):
                 df_owner = df_main[(df_main['Mã căn'] == ma_can) & (df_main['Giá HĐ'] > 0)]
                 if not df_owner.empty:
@@ -618,26 +622,62 @@ if sh:
                         
                         st.markdown("---")
                         st.write("🔄 **Gia Hạn / Thay Đổi Hợp Đồng Chủ Nhà**")
-                        st.caption("Khách thuê hiện tại sẽ không bị ảnh hưởng. Giao dịch này tạo ra 1 dòng HĐ Chủ mới.")
+                        st.caption("Giữ nguyên HĐ cũ, chỉ gia hạn thời gian. Các thông tin dưới đây sẽ tạo thành dòng HĐ mới.")
                         with st.form(key=f"f1_giahan_{toa_nha}_{ma_can}_{idx}"):
                             col_a1, col_a2, col_a3 = st.columns(3)
-                            new_nk = col_a1.date_input("Ngày ký mới", value=row['Ngày hết HĐ'])
-                            new_nh = col_a2.date_input("Ngày hết HĐ mới", value=row['Ngày hết HĐ'] + timedelta(days=365))
-                            new_gia = col_a3.number_input("Giá HĐ mới", value=int(row.get('Giá HĐ', 0)), step=100000)
+                            new_nk = col_a1.date_input("Ngày ký HĐ", value=row['Ngày hết HĐ'], key=f"s1_nk_{idx}")
+                            new_nh = col_a2.date_input("Ngày hết HĐ", value=row['Ngày hết HĐ'] + timedelta(days=365), key=f"s1_nh_{idx}")
+                            new_gia = col_a3.number_input("Giá HĐ", value=int(row.get('Giá HĐ', 0)), step=100000, key=f"s1_gia_{idx}")
                             
                             col_a4, col_a5 = st.columns(2)
-                            new_tt = col_a4.number_input("Thanh toán cho Chủ", step=100000)
-                            new_coc = col_a5.number_input("Cọc thêm (nếu có)", step=100000)
+                            new_tt = col_a4.number_input("Thanh toán", step=100000, key=f"s1_tt_{idx}")
+                            new_coc = col_a5.number_input("Cọc", step=100000, key=f"s1_coc_{idx}")
 
-                            if st.form_submit_button("Lưu HĐ Chủ Mới", type="primary"):
-                                new_row = {
+                            with st.expander("📈 Thay đổi giá HĐ từng giai đoạn (nếu có)"):
+                                c_gd2_1, c_gd2_2, c_gd2_3, c_gd2_4 = st.columns([1, 2, 2, 2])
+                                with c_gd2_1: 
+                                    st.markdown("<br>", unsafe_allow_html=True)
+                                    gd2_on = st.checkbox("Bật GĐ 2", key=f"s1_gd2_{idx}")
+                                with c_gd2_2: gd2_tu = st.date_input("Từ ngày (GĐ 2)", value=new_nk + timedelta(days=180), key=f"s1_d2tu_{idx}")
+                                with c_gd2_3: gd2_den = st.date_input("Đến ngày (GĐ 2)", value=new_nk + timedelta(days=365), key=f"s1_d2den_{idx}")
+                                with c_gd2_4: gd2_gia = st.number_input("Giá HĐ (GĐ 2)", step=100000, key=f"s1_g2_{idx}")
+
+                                c_gd3_1, c_gd3_2, c_gd3_3, c_gd3_4 = st.columns([1, 2, 2, 2])
+                                with c_gd3_1: 
+                                    st.markdown("<br>", unsafe_allow_html=True)
+                                    gd3_on = st.checkbox("Bật GĐ 3", key=f"s1_gd3_{idx}")
+                                with c_gd3_2: gd3_tu = st.date_input("Từ ngày (GĐ 3)", value=new_nk + timedelta(days=365), key=f"s1_d3tu_{idx}")
+                                with c_gd3_3: gd3_den = st.date_input("Đến ngày (GĐ 3)", value=new_nk + timedelta(days=540), key=f"s1_d3den_{idx}")
+                                with c_gd3_4: gd3_gia = st.number_input("Giá HĐ (GĐ 3)", step=100000, key=f"s1_g3_{idx}")
+
+                            if st.form_submit_button("Lưu Gia Hạn", type="primary"):
+                                new_row_1 = {
                                     "Tòa nhà": toa_nha, "Mã căn": ma_can, "Toà": toa_nha, "Chủ nhà - sale": chu_nha, 
                                     "Ngày ký": pd.to_datetime(new_nk), "Ngày hết HĐ": pd.to_datetime(new_nh), "Giá HĐ": new_gia,
                                     "TT cho chủ nhà": new_tt, "Cọc cho chủ nhà": new_coc,
                                     "Tên khách thuê": "", "Ngày in": "", "Ngày out": "", "Giá": 0, "KH cọc": 0, "KH thanh toán": 0, 
-                                    "Công ty": 0, "Cá Nhân": 0, "SALE THẢO": 0, "SALE NGA": 0, "SALE LINH": 0
+                                    "Công ty": 0, "Cá Nhân": 0, "SALE THẢO": 0, "SALE NGA": 0, "SALE LINH": 0,
+                                    "Hết hạn khách hàng": "", "Ráp khách khi hết hạn": ""
                                 }
-                                df_final = pd.concat([df_main, pd.DataFrame([new_row])], ignore_index=True)
+                                rows_to_add = [new_row_1]
+
+                                if gd2_on:
+                                    r2 = new_row_1.copy()
+                                    r2["Ngày ký"] = pd.to_datetime(gd2_tu)
+                                    r2["Ngày hết HĐ"] = pd.to_datetime(gd2_den)
+                                    r2["Giá HĐ"] = gd2_gia
+                                    r2["TT cho chủ nhà"] = 0; r2["Cọc cho chủ nhà"] = 0
+                                    rows_to_add.append(r2)
+
+                                if gd3_on:
+                                    r3 = new_row_1.copy()
+                                    r3["Ngày ký"] = pd.to_datetime(gd3_tu)
+                                    r3["Ngày hết HĐ"] = pd.to_datetime(gd3_den)
+                                    r3["Giá HĐ"] = gd3_gia
+                                    r3["TT cho chủ nhà"] = 0; r3["Cọc cho chủ nhà"] = 0
+                                    rows_to_add.append(r3)
+
+                                df_final = pd.concat([df_main, pd.DataFrame(rows_to_add)], ignore_index=True)
                                 save_data(df_final, "HOP_DONG"); time.sleep(1); st.rerun()
 
             st.divider()
@@ -666,21 +706,24 @@ if sh:
                         
                         st.markdown("---")
                         st.write("🧑‍💼 **Ráp Khách Mới Nối Tiếp**")
-                        st.caption("Hệ thống sẽ tự động kế thừa HĐ Chủ nhà hiện tại. Tiền hoa hồng tính riêng cho khách mới.")
+                        st.caption("Hệ thống sẽ tự động kế thừa HĐ Chủ nhà hiện tại. Nhập chi tiết hợp đồng khách mới:")
                         with st.form(key=f"f2_rapkhach_{toa_nha}_{ma_can}_{idx}"):
                             c_k1, c_k2, c_k3 = st.columns(3)
-                            t_khach = c_k1.text_input("Tên khách MỚI")
-                            t_in = c_k2.date_input("Ngày vào", value=row['Ngày out'])
-                            t_out = c_k3.date_input("Ngày ra", value=row['Ngày out'] + timedelta(days=30))
+                            t_khach = c_k1.text_input("Tên khách MỚI", key=f"s2_khach_{idx}")
+                            t_in = c_k2.date_input("Ngày vào", value=row['Ngày out'], key=f"s2_in_{idx}")
+                            t_out = c_k3.date_input("Ngày ra", value=row['Ngày out'] + timedelta(days=30), key=f"s2_out_{idx}")
                             
-                            c_k4, c_k5 = st.columns(2)
-                            t_gia = c_k4.number_input("Giá thuê khách trả", value=int(row.get('Giá', 0)), step=100000)
-                            t_coc = c_k5.number_input("Khách cọc", step=100000)
+                            c_k4, c_k5, c_k6 = st.columns(3)
+                            t_gia = c_k4.number_input("Giá thuê", value=int(row.get('Giá', 0)), step=100000, key=f"s2_gia_{idx}")
+                            t_coc = c_k5.number_input("Khách cọc", step=100000, key=f"s2_coc_{idx}")
+                            t_tt = c_k6.number_input("Khách thanh toán", step=100000, key=f"s2_tt_{idx}")
 
-                            c_k6, c_k7, c_k8 = st.columns(3)
-                            t_thao = c_k6.number_input("Sale Thảo", step=50000)
-                            t_nga = c_k7.number_input("Sale Nga", step=50000)
-                            t_linh = c_k8.number_input("Sale Linh", step=50000)
+                            c_k7, c_k8, c_k9, c_k10, c_k11 = st.columns(5)
+                            t_thao = c_k7.number_input("Sale Thảo", step=50000, key=f"s2_thao_{idx}")
+                            t_nga = c_k8.number_input("Sale Nga", step=50000, key=f"s2_nga_{idx}")
+                            t_linh = c_k9.number_input("Sale Linh", step=50000, key=f"s2_linh_{idx}")
+                            t_cty = c_k10.number_input("Công ty", step=50000, key=f"s2_cty_{idx}")
+                            t_canhan = c_k11.number_input("Cá nhân", step=50000, key=f"s2_cn_{idx}")
 
                             if st.form_submit_button("Lưu Khách Mới", type="primary"):
                                 owner_info = get_latest_owner_info(ma_can)
@@ -691,8 +734,9 @@ if sh:
                                         "Ngày ký": owner_info['Ngày ký'], "Ngày hết HĐ": owner_info['Ngày hết HĐ'], "Giá HĐ": owner_info['Giá HĐ'],
                                         "TT cho chủ nhà": 0, "Cọc cho chủ nhà": 0,
                                         "Tên khách thuê": t_khach, "Ngày in": pd.to_datetime(t_in), "Ngày out": pd.to_datetime(t_out),
-                                        "Giá": t_gia, "KH cọc": t_coc, "KH thanh toán": 0, 
-                                        "Công ty": 0, "Cá Nhân": 0, "SALE THẢO": t_thao, "SALE NGA": t_nga, "SALE LINH": t_linh
+                                        "Giá": t_gia, "KH cọc": t_coc, "KH thanh toán": t_tt, 
+                                        "Công ty": t_cty, "Cá Nhân": t_canhan, "SALE THẢO": t_thao, "SALE NGA": t_nga, "SALE LINH": t_linh,
+                                        "Hết hạn khách hàng": "", "Ráp khách khi hết hạn": ""
                                     }
                                     df_final = pd.concat([df_main, pd.DataFrame([new_row])], ignore_index=True)
                                     save_data(df_final, "HOP_DONG"); time.sleep(1); st.rerun()
@@ -725,13 +769,21 @@ if sh:
                         st.caption("Hệ thống tự động kế thừa HĐ Chủ nhà hiện tại đang có hiệu lực.")
                         with st.form(key=f"f3_rapkhach_{toa_nha}_{ma_can}_{idx}"):
                             c_k1, c_k2, c_k3 = st.columns(3)
-                            t_khach = c_k1.text_input("Tên khách MỚI")
-                            t_in = c_k2.date_input("Ngày vào", date.today())
-                            t_out = c_k3.date_input("Ngày ra", date.today() + timedelta(days=30))
+                            t_khach = c_k1.text_input("Tên khách", key=f"s3_khach_{idx}")
+                            t_in = c_k2.date_input("Ngày vào", date.today(), key=f"s3_in_{idx}")
+                            t_out = c_k3.date_input("Ngày ra", date.today() + timedelta(days=30), key=f"s3_out_{idx}")
                             
-                            c_k4, c_k5 = st.columns(2)
-                            t_gia = c_k4.number_input("Giá thuê khách trả", step=100000)
-                            t_coc = c_k5.number_input("Khách cọc", step=100000)
+                            c_k4, c_k5, c_k6 = st.columns(3)
+                            t_gia = c_k4.number_input("Giá thuê", step=100000, key=f"s3_gia_{idx}")
+                            t_coc = c_k5.number_input("Khách cọc", step=100000, key=f"s3_coc_{idx}")
+                            t_tt = c_k6.number_input("Khách thanh toán", step=100000, key=f"s3_tt_{idx}")
+
+                            c_k7, c_k8, c_k9, c_k10, c_k11 = st.columns(5)
+                            t_thao = c_k7.number_input("Sale Thảo", step=50000, key=f"s3_thao_{idx}")
+                            t_nga = c_k8.number_input("Sale Nga", step=50000, key=f"s3_nga_{idx}")
+                            t_linh = c_k9.number_input("Sale Linh", step=50000, key=f"s3_linh_{idx}")
+                            t_cty = c_k10.number_input("Công ty", step=50000, key=f"s3_cty_{idx}")
+                            t_canhan = c_k11.number_input("Cá nhân", step=50000, key=f"s3_cn_{idx}")
 
                             if st.form_submit_button("Lưu Khách Mới", type="primary"):
                                 owner_info = get_latest_owner_info(ma_can)
@@ -742,8 +794,9 @@ if sh:
                                         "Ngày ký": owner_info['Ngày ký'], "Ngày hết HĐ": owner_info['Ngày hết HĐ'], "Giá HĐ": owner_info['Giá HĐ'],
                                         "TT cho chủ nhà": 0, "Cọc cho chủ nhà": 0,
                                         "Tên khách thuê": t_khach, "Ngày in": pd.to_datetime(t_in), "Ngày out": pd.to_datetime(t_out),
-                                        "Giá": t_gia, "KH cọc": t_coc, "KH thanh toán": 0, 
-                                        "Công ty": 0, "Cá Nhân": 0, "SALE THẢO": 0, "SALE NGA": 0, "SALE LINH": 0
+                                        "Giá": t_gia, "KH cọc": t_coc, "KH thanh toán": t_tt, 
+                                        "Công ty": t_cty, "Cá Nhân": t_canhan, "SALE THẢO": t_thao, "SALE NGA": t_nga, "SALE LINH": t_linh,
+                                        "Hết hạn khách hàng": "", "Ráp khách khi hết hạn": ""
                                     }
                                     df_final = pd.concat([df_main, pd.DataFrame([new_row])], ignore_index=True)
                                     save_data(df_final, "HOP_DONG"); time.sleep(1); st.rerun()
@@ -766,24 +819,44 @@ if sh:
                         st.markdown("---")
                         st.write("📝 **Ký HĐ Chủ nhà & Ráp Khách mới**")
                         with st.form(key=f"f4_full_{toa_nha}_{ma_can}_{idx}"):
+                            st.markdown("**1. Thông tin Chủ nhà**")
                             c1, c2, c3 = st.columns(3)
-                            n_chu = c1.text_input("Tên Chủ nhà")
-                            n_gia_hd = c2.number_input("Giá HĐ Chủ", step=100000)
-                            n_nk = c3.date_input("HĐ Chủ từ", date.today())
+                            n_chu = c1.text_input("Tên Chủ nhà", key=f"s4_chu_{idx}")
+                            n_nk = c2.date_input("Ngày ký HĐ", date.today(), key=f"s4_nk_{idx}")
+                            n_nh = c3.date_input("Ngày hết HĐ", date.today() + timedelta(days=365), key=f"s4_nh_{idx}")
                             
-                            c4, c5, c6 = st.columns(3)
-                            n_khach = c4.text_input("Tên khách thuê")
-                            n_gia_thue = c5.number_input("Giá khách thuê", step=100000)
-                            n_in = c6.date_input("Ngày khách vào", date.today())
+                            c1a, c2a, c3a = st.columns(3)
+                            n_gia_hd = c1a.number_input("Giá HĐ Chủ", step=100000, key=f"s4_giahd_{idx}")
+                            n_tt_chu = c2a.number_input("Thanh toán cho Chủ", step=100000, key=f"s4_ttchu_{idx}")
+                            n_coc_chu = c3a.number_input("Cọc cho Chủ", step=100000, key=f"s4_cocchu_{idx}")
+                            
+                            st.markdown("**2. Ráp Khách mới**")
+                            c_k1, c_k2, c_k3 = st.columns(3)
+                            t_khach = c_k1.text_input("Tên khách", key=f"s4_khach_{idx}")
+                            t_in = c_k2.date_input("Ngày vào", date.today(), key=f"s4_in_{idx}")
+                            t_out = c_k3.date_input("Ngày ra", date.today() + timedelta(days=30), key=f"s4_out_{idx}")
+                            
+                            c_k4, c_k5, c_k6 = st.columns(3)
+                            t_gia = c_k4.number_input("Giá thuê", step=100000, key=f"s4_gia_{idx}")
+                            t_coc = c_k5.number_input("Khách cọc", step=100000, key=f"s4_coc_{idx}")
+                            t_tt = c_k6.number_input("Khách thanh toán", step=100000, key=f"s4_tt_{idx}")
+
+                            c_k7, c_k8, c_k9, c_k10, c_k11 = st.columns(5)
+                            t_thao = c_k7.number_input("Sale Thảo", step=50000, key=f"s4_thao_{idx}")
+                            t_nga = c_k8.number_input("Sale Nga", step=50000, key=f"s4_nga_{idx}")
+                            t_linh = c_k9.number_input("Sale Linh", step=50000, key=f"s4_linh_{idx}")
+                            t_cty = c_k10.number_input("Công ty", step=50000, key=f"s4_cty_{idx}")
+                            t_canhan = c_k11.number_input("Cá nhân", step=50000, key=f"s4_cn_{idx}")
 
                             if st.form_submit_button("Lưu Ký Mới Toàn Bộ", type="primary"):
                                 new_row = {
                                     "Tòa nhà": toa_nha, "Mã căn": ma_can, "Toà": toa_nha, "Chủ nhà - sale": n_chu, 
-                                    "Ngày ký": pd.to_datetime(n_nk), "Ngày hết HĐ": pd.to_datetime(n_nk) + timedelta(days=365), "Giá HĐ": n_gia_hd,
-                                    "TT cho chủ nhà": 0, "Cọc cho chủ nhà": 0,
-                                    "Tên khách thuê": n_khach, "Ngày in": pd.to_datetime(n_in), "Ngày out": pd.to_datetime(n_in) + timedelta(days=30),
-                                    "Giá": n_gia_thue, "KH cọc": 0, "KH thanh toán": 0, 
-                                    "Công ty": 0, "Cá Nhân": 0, "SALE THẢO": 0, "SALE NGA": 0, "SALE LINH": 0
+                                    "Ngày ký": pd.to_datetime(n_nk), "Ngày hết HĐ": pd.to_datetime(n_nh), "Giá HĐ": n_gia_hd,
+                                    "TT cho chủ nhà": n_tt_chu, "Cọc cho chủ nhà": n_coc_chu,
+                                    "Tên khách thuê": t_khach, "Ngày in": pd.to_datetime(t_in), "Ngày out": pd.to_datetime(t_out),
+                                    "Giá": t_gia, "KH cọc": t_coc, "KH thanh toán": t_tt, 
+                                    "Công ty": t_cty, "Cá Nhân": t_canhan, "SALE THẢO": t_thao, "SALE NGA": t_nga, "SALE LINH": t_linh,
+                                    "Hết hạn khách hàng": "", "Ráp khách khi hết hạn": ""
                                 }
                                 df_final = pd.concat([df_main, pd.DataFrame([new_row])], ignore_index=True)
                                 save_data(df_final, "HOP_DONG"); time.sleep(1); st.rerun()
@@ -872,7 +945,7 @@ if sh:
                 st.dataframe(styler, use_container_width=True)
                 st.download_button("📥 Tải Excel CPHĐ", convert_df_to_excel(df_export_hd), f"CP_HopDong_{m_hd}_{y_hd}.xlsx")
             else:
-                st.warning(f"Không có căn nào có Giá HĐ > hoạt động trong tháng {m_hd}/{y_hd}")
+                st.warning(f"Không có căn nào có Giá HĐ > 0 hoạt động trong tháng {m_hd}/{y_hd}")
 
     with tabs[6]:
         st.subheader("🏠 Quản Lý Chi Phí Cho Thuê (Thu Khách Hàng)")
@@ -917,7 +990,7 @@ if sh:
 
                 loi_nhuan = gia_thue - gia_hd
 
-                return pd.Series([True, thoi_han_thue, trang_thai_chu, thoi_han_hd, gia_hd, loi_nhuan], 
+                return pd.Series([True, thoi_han_thue, trang_thai_chu, trang_thai_hd, gia_hd, loi_nhuan], 
                                  index=['_keep', 'Thời hạn cho thuê', 'Trạng thái HĐ Chủ', 'Thời hạn HĐ', 'Giá HĐ Chủ', 'Lợi nhuận ròng'])
 
             ct_calcs = df_raw_ct.apply(process_row_ct, axis=1)
