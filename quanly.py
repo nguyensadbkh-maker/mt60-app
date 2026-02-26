@@ -313,7 +313,7 @@ if sh:
             st.cache_data.clear()
             st.rerun()
 
-    DANH_SACH_NHA = { "Tòa A": ["A101"], "Tòa B": ["B101"], "Khác": [] }
+    DANH_SACH_NHA = { "MT60": [], "MT61": [], "OC1A": [], "OC1B": [], "OC2A": [], "OC2B": [], "OC3": [] }
 
     # ==============================================================================
     # 6. GIAO DIỆN CHÍNH (TABS)
@@ -326,7 +326,7 @@ if sh:
         "📈 Theo dõi HĐKD" 
     ])
 
-    # --- TAB 0: NHẬP LIỆU GIAO DIỆN MỚI, CHIA PHÂN KHU ---
+    # --- TAB 0: NHẬP LIỆU GIAO DIỆN MỚI ---
     with tabs[0]:
         st.subheader("✍️ Nhập Liệu Hợp Đồng Mới")
         av = st.session_state.get('auto', {}) 
@@ -348,9 +348,11 @@ if sh:
                 try: ngay_het_hd = st.date_input("Ngày hết HĐ", value=ngay_ky + timedelta(days=thoi_han*30))
                 except: ngay_het_hd = st.date_input("Ngày hết HĐ")
             
-            c2_4, c2_5 = st.columns(2)
+            # ĐÃ THÊM: Cọc cho chủ nhà
+            c2_4, c2_5, c2_6 = st.columns(3)
             with c2_4: gia_hd = st.number_input("Giá HĐ Gốc (Trả chủ nhà)", step=100000)
             with c2_5: tt_chu_nha = st.number_input("Thanh toán cho Chủ nhà", step=100000) 
+            with c2_6: coc_chu_nha = st.number_input("Cọc cho Chủ nhà", step=100000)
 
             st.divider()
 
@@ -367,22 +369,32 @@ if sh:
             st.divider()
 
             st.markdown("### 💸 4. Chi Phí Sale & Hoa Hồng")
-            c4_1, c4_2, c4_3, c4_4 = st.columns(4)
-            with c4_1: sale_thao = st.number_input("Hoa hồng Sale Thảo", step=50000)
-            with c4_2: sale_nga = st.number_input("Hoa hồng Sale Nga", step=50000)
-            with c4_3: sale_linh = st.number_input("Hoa hồng Sale Linh", step=50000)
+            # ĐÃ THÊM: Cá nhân
+            c4_1, c4_2, c4_3, c4_4, c4_5 = st.columns(5)
+            with c4_1: sale_thao = st.number_input("Hoa hồng Thảo", step=50000)
+            with c4_2: sale_nga = st.number_input("Hoa hồng Nga", step=50000)
+            with c4_3: sale_linh = st.number_input("Hoa hồng Linh", step=50000)
             with c4_4: cong_ty = st.number_input("Chi phí Công ty", step=50000)
+            with c4_5: ca_nhan = st.number_input("Cá Nhân", step=50000)
             
             st.markdown("<br>", unsafe_allow_html=True)
             
             if st.form_submit_button("💾 LƯU HỢP ĐỒNG LÊN MÂY", type="primary", use_container_width=True):
-                new_data = {"Tòa nhà": chon_toa, "Mã căn": chon_can, "Toà": chon_toa, "Chủ nhà - sale": chu_nha_sale, 
-                            "Ngày ký": pd.to_datetime(ngay_ky), "Ngày hết HĐ": pd.to_datetime(ngay_het_hd), "Giá HĐ": gia_hd,
-                            "TT cho chủ nhà": tt_chu_nha, "Tên khách thuê": ten_khach, "Ngày in": pd.to_datetime(ngay_in), "Ngày out": pd.to_datetime(ngay_out),
-                            "Giá": gia_thue, "KH cọc": kh_coc, "Công ty": cong_ty, "SALE THẢO": sale_thao, "SALE NGA": sale_nga, "SALE LINH": sale_linh,
-                            "Cọc cho chủ nhà": 0, "KH thanh toán": 0, "Cá Nhân": 0, "Hết hạn khách hàng": "", "Ráp khách khi hết hạn": ""}
+                new_data = {
+                    "Tòa nhà": chon_toa, "Mã căn": chon_can, "Toà": chon_toa, "Chủ nhà - sale": chu_nha_sale, 
+                    "Ngày ký": pd.to_datetime(ngay_ky), "Ngày hết HĐ": pd.to_datetime(ngay_het_hd), "Giá HĐ": gia_hd,
+                    "TT cho chủ nhà": tt_chu_nha, "Cọc cho chủ nhà": coc_chu_nha, # Sử dụng giá trị nhập vào
+                    "Tên khách thuê": ten_khach, "Ngày in": pd.to_datetime(ngay_in), "Ngày out": pd.to_datetime(ngay_out),
+                    "Giá": gia_thue, "KH cọc": kh_coc, "KH thanh toán": 0, 
+                    "Công ty": cong_ty, "Cá Nhân": ca_nhan, # Sử dụng giá trị nhập vào
+                    "SALE THẢO": sale_thao, "SALE NGA": sale_nga, "SALE LINH": sale_linh,
+                    "Hết hạn khách hàng": "", "Ráp khách khi hết hạn": ""
+                }
                 df_final = pd.concat([df_main, pd.DataFrame([new_data])], ignore_index=True)
-                save_data(df_final, "HOP_DONG"); st.session_state['auto'] = {}; time.sleep(1); st.rerun()
+                save_data(df_final, "HOP_DONG")
+                st.session_state['auto'] = {}
+                time.sleep(1)
+                st.rerun()
 
     with tabs[1]:
         st.header("📤 Quản lý File Excel")
