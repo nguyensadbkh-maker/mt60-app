@@ -326,50 +326,86 @@ if sh:
         "📈 Theo dõi HĐKD" 
     ])
 
-    # --- TAB 0: NHẬP LIỆU GIAO DIỆN MỚI ---
+    # --- TAB 0: NHẬP LIỆU (THÊM CHỨC NĂNG RÁP KHÁCH MỚI) ---
     with tabs[0]:
-        st.subheader("✍️ Nhập Liệu Hợp Đồng Mới")
-        av = st.session_state.get('auto', {}) 
+        st.subheader("✍️ Nhập Liệu (Hợp đồng mới / Ráp khách mới)")
+        
+        # --- TÍNH NĂNG MỚI: TẢI DỮ LIỆU CHỦ NHÀ ---
+        st.markdown("💡 *Mẹo: Nếu phòng đã có Hợp đồng với chủ nhà, hãy điền Tòa và Mã căn rồi bấm nút tìm kiếm để hệ thống tự điền thông tin chủ nhà, bạn chỉ cần nhập khách mới!*")
+        
+        c_search1, c_search2, c_search3 = st.columns([2, 2, 2])
+        with c_search1: search_toa = st.selectbox("Tòa nhà", list(DANH_SACH_NHA.keys()), key="search_toa")
+        with c_search2: search_can = st.text_input("Mã căn cần ráp khách", key="search_can").strip().upper()
+        
+        # Khởi tạo session_state để lưu trữ dữ liệu điền sẵn
+        if 'auto_owner' not in st.session_state:
+            st.session_state['auto_owner'] = {
+                'chu_nha': '', 'ngay_ky': date.today(), 'ngay_het': date.today() + timedelta(days=365),
+                'gia_hd': 0, 'tt_chu_nha': 0, 'coc_chu_nha': 0
+            }
+
+        with c_search3:
+            st.markdown("<br>", unsafe_allow_html=True) # Tạo khoảng trống cho nút đều với ô nhập
+            if st.button("🔍 Tải dữ liệu Chủ nhà", type="secondary", use_container_width=True):
+                if not df_main.empty and search_can != "":
+                    # Tìm dòng có Mã căn tương ứng và có giá trị Giá HĐ > 0 gần nhất
+                    df_found = df_main[(df_main['Mã căn'] == search_can) & (df_main['Giá HĐ'] > 0)]
+                    if not df_found.empty:
+                        # Lấy dòng mới nhất (dựa trên index)
+                        latest_row = df_found.iloc[-1]
+                        st.session_state['auto_owner'] = {
+                            'chu_nha': str(latest_row.get('Chủ nhà - sale', '')),
+                            'ngay_ky': latest_row.get('Ngày ký', date.today()) if pd.notna(latest_row.get('Ngày ký')) else date.today(),
+                            'ngay_het': latest_row.get('Ngày hết HĐ', date.today() + timedelta(days=365)) if pd.notna(latest_row.get('Ngày hết HĐ')) else date.today() + timedelta(days=365),
+                            'gia_hd': int(latest_row.get('Giá HĐ', 0)),
+                            'tt_chu_nha': int(latest_row.get('TT cho chủ nhà', 0)),
+                            'coc_chu_nha': int(latest_row.get('Cọc cho chủ nhà', 0))
+                        }
+                        st.success(f"Đã tìm thấy HĐ của chủ nhà: {st.session_state['auto_owner']['chu_nha']}")
+                    else:
+                        st.warning("Không tìm thấy dữ liệu Chủ nhà cho phòng này.")
+                else:
+                    st.warning("Vui lòng nhập Mã căn.")
+
+        st.markdown("---")
+
+        # --- FORM NHẬP LIỆU CHÍNH ---
         with st.form("main_form"):
-            
             st.markdown("### 🏠 1. Thông Tin Phòng")
             c1_1, c1_2 = st.columns(2)
-            with c1_1: chon_toa = st.selectbox("Tòa nhà", list(DANH_SACH_NHA.keys()))
-            with c1_2: chon_can = st.text_input("Mã căn", value=str(av.get("ma_can","")))
+            with c1_1: chon_toa = st.selectbox("Xác nhận Tòa", list(DANH_SACH_NHA.keys()), index=list(DANH_SACH_NHA.keys()).index(search_toa) if search_toa in DANH_SACH_NHA else 0)
+            with c1_2: chon_can = st.text_input("Xác nhận Mã căn", value=search_can)
             
             st.divider()
             
             st.markdown("### 🏢 2. Hợp Đồng Chủ Nhà")
-            c2_1, c2_2, c2_3 = st.columns(3)
-            with c2_1: chu_nha_sale = st.text_input("Tên Chủ nhà")
-            with c2_2: ngay_ky = st.date_input("Ngày ký HĐ", date.today())
-            with c2_3: 
-                thoi_han = st.selectbox("Thời hạn thuê (Tháng)", [6, 12, 1, 3, 24])
-                try: ngay_het_hd = st.date_input("Ngày hết HĐ", value=ngay_ky + timedelta(days=thoi_han*30))
-                except: ngay_het_hd = st.date_input("Ngày hết HĐ")
+            auto_o = st.session_state['auto_owner'] # Lấy dữ liệu từ session_state (nếu có bấm nút tải)
             
-            # ĐÃ THÊM: Cọc cho chủ nhà
+            c2_1, c2_2, c2_3 = st.columns(3)
+            with c2_1: chu_nha_sale = st.text_input("Tên Chủ nhà", value=auto_o['chu_nha'])
+            with c2_2: ngay_ky = st.date_input("Ngày ký HĐ", value=pd.to_datetime(auto_o['ngay_ky']))
+            with c2_3: ngay_het_hd = st.date_input("Ngày hết HĐ", value=pd.to_datetime(auto_o['ngay_het']))
+            
             c2_4, c2_5, c2_6 = st.columns(3)
-            with c2_4: gia_hd = st.number_input("Giá HĐ Gốc (Trả chủ nhà)", step=100000)
-            with c2_5: tt_chu_nha = st.number_input("Thanh toán cho Chủ nhà", step=100000) 
-            with c2_6: coc_chu_nha = st.number_input("Cọc cho Chủ nhà", step=100000)
+            with c2_4: gia_hd = st.number_input("Giá HĐ Gốc (Trả chủ nhà)", step=100000, value=auto_o['gia_hd'])
+            with c2_5: tt_chu_nha = st.number_input("Thanh toán cho Chủ nhà", step=100000, value=auto_o['tt_chu_nha']) 
+            with c2_6: coc_chu_nha = st.number_input("Cọc cho Chủ nhà", step=100000, value=auto_o['coc_chu_nha'])
 
             st.divider()
 
-            st.markdown("### 🧑‍💼 3. Khách Thuê")
+            st.markdown("### 🧑‍💼 3. Khách Thuê (Dành cho khách mới)")
             c3_1, c3_2, c3_3 = st.columns(3)
-            with c3_1: ten_khach = st.text_input("Tên khách thuê", value=str(av.get("ten_khach","")))
-            with c3_2: ngay_in = st.date_input("Ngày khách vào (In)", ngay_ky)
-            with c3_3: ngay_out = st.date_input("Ngày khách ra (Out)", ngay_het_hd)
+            with c3_1: ten_khach = st.text_input("Tên khách thuê")
+            with c3_2: ngay_in = st.date_input("Ngày khách vào (In)", date.today())
+            with c3_3: ngay_out = st.date_input("Ngày khách ra (Out)", date.today() + timedelta(days=30))
             
             c3_4, c3_5 = st.columns(2)
-            with c3_4: gia_thue = st.number_input("Giá thuê khách trả", step=100000, value=int(av.get("gia_thue", 0) or 0))
+            with c3_4: gia_thue = st.number_input("Giá thuê khách trả", step=100000)
             with c3_5: kh_coc = st.number_input("Khách cọc", step=100000)
 
             st.divider()
 
             st.markdown("### 💸 4. Chi Phí Sale & Hoa Hồng")
-            # ĐÃ THÊM: Cá nhân
             c4_1, c4_2, c4_3, c4_4, c4_5 = st.columns(5)
             with c4_1: sale_thao = st.number_input("Hoa hồng Thảo", step=50000)
             with c4_2: sale_nga = st.number_input("Hoa hồng Nga", step=50000)
@@ -383,16 +419,20 @@ if sh:
                 new_data = {
                     "Tòa nhà": chon_toa, "Mã căn": chon_can, "Toà": chon_toa, "Chủ nhà - sale": chu_nha_sale, 
                     "Ngày ký": pd.to_datetime(ngay_ky), "Ngày hết HĐ": pd.to_datetime(ngay_het_hd), "Giá HĐ": gia_hd,
-                    "TT cho chủ nhà": tt_chu_nha, "Cọc cho chủ nhà": coc_chu_nha, # Sử dụng giá trị nhập vào
+                    "TT cho chủ nhà": tt_chu_nha, "Cọc cho chủ nhà": coc_chu_nha, 
                     "Tên khách thuê": ten_khach, "Ngày in": pd.to_datetime(ngay_in), "Ngày out": pd.to_datetime(ngay_out),
                     "Giá": gia_thue, "KH cọc": kh_coc, "KH thanh toán": 0, 
-                    "Công ty": cong_ty, "Cá Nhân": ca_nhan, # Sử dụng giá trị nhập vào
+                    "Công ty": cong_ty, "Cá Nhân": ca_nhan, 
                     "SALE THẢO": sale_thao, "SALE NGA": sale_nga, "SALE LINH": sale_linh,
                     "Hết hạn khách hàng": "", "Ráp khách khi hết hạn": ""
                 }
                 df_final = pd.concat([df_main, pd.DataFrame([new_data])], ignore_index=True)
                 save_data(df_final, "HOP_DONG")
-                st.session_state['auto'] = {}
+                # Reset lại ô lưu trữ chủ nhà sau khi lưu thành công
+                st.session_state['auto_owner'] = {
+                    'chu_nha': '', 'ngay_ky': date.today(), 'ngay_het': date.today() + timedelta(days=365),
+                    'gia_hd': 0, 'tt_chu_nha': 0, 'coc_chu_nha': 0
+                }
                 time.sleep(1)
                 st.rerun()
 
