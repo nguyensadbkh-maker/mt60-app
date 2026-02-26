@@ -30,7 +30,6 @@ st.markdown("""
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
         
-        /* CSS FIX LỖI BỊ CẮT CHỮ (...) Ở CÁC TAB BÁO CÁO */
         div[data-testid="stMetricValue"] > div {
             font-size: 1.35rem !important; 
             white-space: normal !important;
@@ -66,7 +65,7 @@ COLS_MONEY = [
 ]
 
 # ==============================================================================
-# 2. KẾT NỐI DỮ LIỆU THÔNG MINH (BẢO MẬT STREAMLIT SECRETS)
+# 2. KẾT NỐI DỮ LIỆU THÔNG MINH
 # ==============================================================================
 
 st.title("☁️ MT60 STUDIO - QUẢN LÝ TỔNG QUAN")
@@ -79,7 +78,6 @@ def connect_google_sheet(uploaded_file=None):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
         creds_dict = None
-        
         if "google_credentials" in st.secrets:
             creds_dict = json.loads(st.secrets["google_credentials"])
         elif os.path.exists("key.json"):
@@ -92,14 +90,12 @@ def connect_google_sheet(uploaded_file=None):
         if creds_dict:
             if 'private_key' in creds_dict:
                 creds_dict['private_key'] = creds_dict['private_key'].replace('\\\\n', '\n').replace('\\n', '\n')
-            
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             client = gspread.authorize(creds)
             return client.open(SHEET_NAME)
         return None
     except Exception as e:
         st.error(f"❌ Lỗi kết nối. Vui lòng kiểm tra lại file JSON hoặc Streamlit Secrets.")
-        st.error(f"Chi tiết kỹ thuật: {e}")
         return None
 
 sh = None
@@ -306,7 +302,7 @@ if sh:
                         toa_nha = str(r.get('Toà', 'Chưa rõ')).strip()
                         st.markdown(f"**⚪ P.{r['Mã căn']}** ({toa_nha})")
         
-        st.info("👉 Vào Tab **Cảnh Báo** để xem chi tiết.")
+        st.info("👉 Vào Tab **Cảnh Báo** để xem chi tiết & Xử lý.")
         st.divider()
         if st.button("🔄 Tải lại dữ liệu", use_container_width=True): 
             st.cache_data.clear()
@@ -584,7 +580,7 @@ if sh:
             save_data(df_to_save, "HOP_DONG")
             time.sleep(1); st.rerun()
 
-    # --- TAB 4: TRUNG TÂM CẢNH BÁO (TÍCH HỢP FORM XỬ LÝ NHANH) ---
+    # --- TAB 4: TRUNG TÂM CẢNH BÁO (TÍCH HỢP FORM XỬ LÝ NHANH FULL TRƯỜNG) ---
     with tabs[4]:
         st.subheader("🏠 Trung Tâm Cảnh Báo & Xử Lý Nhanh")
         if not df_main.empty:
@@ -633,6 +629,7 @@ if sh:
                             new_tt = col_a4.number_input("Thanh toán", step=100000, key=f"s1_tt_{idx}")
                             new_coc = col_a5.number_input("Cọc", step=100000, key=f"s1_coc_{idx}")
 
+                            # MỞ RỘNG TÍNH NĂNG ĐỔI GIÁ BẬC THANG NGAY TRONG CẢNH BÁO
                             with st.expander("📈 Thay đổi giá HĐ từng giai đoạn (nếu có)"):
                                 c_gd2_1, c_gd2_2, c_gd2_3, c_gd2_4 = st.columns([1, 2, 2, 2])
                                 with c_gd2_1: 
@@ -769,7 +766,7 @@ if sh:
                         st.caption("Hệ thống tự động kế thừa HĐ Chủ nhà hiện tại đang có hiệu lực.")
                         with st.form(key=f"f3_rapkhach_{toa_nha}_{ma_can}_{idx}"):
                             c_k1, c_k2, c_k3 = st.columns(3)
-                            t_khach = c_k1.text_input("Tên khách", key=f"s3_khach_{idx}")
+                            t_khach = c_k1.text_input("Tên khách MỚI", key=f"s3_khach_{idx}")
                             t_in = c_k2.date_input("Ngày vào", date.today(), key=f"s3_in_{idx}")
                             t_out = c_k3.date_input("Ngày ra", date.today() + timedelta(days=30), key=f"s3_out_{idx}")
                             
@@ -990,7 +987,7 @@ if sh:
 
                 loi_nhuan = gia_thue - gia_hd
 
-                return pd.Series([True, thoi_han_thue, trang_thai_chu, trang_thai_hd, gia_hd, loi_nhuan], 
+                return pd.Series([True, thoi_han_thue, trang_thai_chu, thoi_han_hd, gia_hd, loi_nhuan], 
                                  index=['_keep', 'Thời hạn cho thuê', 'Trạng thái HĐ Chủ', 'Thời hạn HĐ', 'Giá HĐ Chủ', 'Lợi nhuận ròng'])
 
             ct_calcs = df_raw_ct.apply(process_row_ct, axis=1)
