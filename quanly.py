@@ -313,7 +313,7 @@ if sh:
             st.cache_data.clear()
             st.rerun()
 
-    DANH_SACH_NHA = { "MT60": [], "MT61": [], "OC1A": [], "OC1B": [], "OC2A": [], "OC2B": [], "OC3": [] }
+    DANH_SACH_NHA = { "Tòa A": ["A101"], "Tòa B": ["B101"], "Khác": [] }
 
     # ==============================================================================
     # 6. GIAO DIỆN CHÍNH (TABS)
@@ -326,35 +326,56 @@ if sh:
         "📈 Theo dõi HĐKD" 
     ])
 
+    # --- TAB 0: NHẬP LIỆU GIAO DIỆN MỚI, CHIA PHÂN KHU ---
     with tabs[0]:
         st.subheader("✍️ Nhập Liệu Hợp Đồng Mới")
         av = st.session_state.get('auto', {}) 
         with st.form("main_form"):
-            c1, c2, c3, c4 = st.columns(4)
-            with c1: chon_toa = st.selectbox("Tòa nhà", list(DANH_SACH_NHA.keys()))
-            with c2: chon_can = st.text_input("Mã căn", value=str(av.get("ma_can","")))
-            with c3: chu_nha_sale = st.text_input("Chủ nhà - Sale")
-            with c4: gia_thue = st.number_input("Giá thuê khách trả", step=100000, value=int(av.get("gia_thue", 0) or 0))
-            c21, c22, c23, c24 = st.columns(4)
-            with c21: ngay_ky = st.date_input("Ngày ký HĐ", date.today())
-            with c22: 
-                thoi_han = st.selectbox("Thời hạn", [6, 12, 1, 3, 24])
+            
+            st.markdown("### 🏠 1. Thông Tin Phòng")
+            c1_1, c1_2 = st.columns(2)
+            with c1_1: chon_toa = st.selectbox("Tòa nhà", list(DANH_SACH_NHA.keys()))
+            with c1_2: chon_can = st.text_input("Mã căn", value=str(av.get("ma_can","")))
+            
+            st.divider()
+            
+            st.markdown("### 🏢 2. Hợp Đồng Chủ Nhà")
+            c2_1, c2_2, c2_3 = st.columns(3)
+            with c2_1: chu_nha_sale = st.text_input("Tên Chủ nhà")
+            with c2_2: ngay_ky = st.date_input("Ngày ký HĐ", date.today())
+            with c2_3: 
+                thoi_han = st.selectbox("Thời hạn thuê (Tháng)", [6, 12, 1, 3, 24])
                 try: ngay_het_hd = st.date_input("Ngày hết HĐ", value=ngay_ky + timedelta(days=thoi_han*30))
                 except: ngay_het_hd = st.date_input("Ngày hết HĐ")
-            with c23: ngay_in = st.date_input("Ngày in", ngay_ky)
-            with c24: ngay_out = st.date_input("Ngày out", ngay_het_hd)
-            c31, c32, c33, c34 = st.columns(4)
-            with c31: ten_khach = st.text_input("Tên khách", value=str(av.get("ten_khach","")))
-            with c32: gia_hd = st.number_input("Giá HĐ (Gốc)", step=100000)
-            with c33: kh_coc = st.number_input("Khách cọc", step=100000)
-            with c34: tt_chu_nha = st.number_input("TT cho chủ nhà", step=100000) 
-            c41, c42, c43, c44 = st.columns(4)
-            with c41: sale_thao = st.number_input("Sale Thảo", step=50000)
-            with c42: sale_nga = st.number_input("Sale Nga", step=50000)
-            with c43: sale_linh = st.number_input("Sale Linh", step=50000)
-            with c44: cong_ty = st.number_input("Công ty", step=50000)
             
-            if st.form_submit_button("💾 LƯU HỢP ĐỒNG", type="primary"):
+            c2_4, c2_5 = st.columns(2)
+            with c2_4: gia_hd = st.number_input("Giá HĐ Gốc (Trả chủ nhà)", step=100000)
+            with c2_5: tt_chu_nha = st.number_input("Thanh toán cho Chủ nhà", step=100000) 
+
+            st.divider()
+
+            st.markdown("### 🧑‍💼 3. Khách Thuê")
+            c3_1, c3_2, c3_3 = st.columns(3)
+            with c3_1: ten_khach = st.text_input("Tên khách thuê", value=str(av.get("ten_khach","")))
+            with c3_2: ngay_in = st.date_input("Ngày khách vào (In)", ngay_ky)
+            with c3_3: ngay_out = st.date_input("Ngày khách ra (Out)", ngay_het_hd)
+            
+            c3_4, c3_5 = st.columns(2)
+            with c3_4: gia_thue = st.number_input("Giá thuê khách trả", step=100000, value=int(av.get("gia_thue", 0) or 0))
+            with c3_5: kh_coc = st.number_input("Khách cọc", step=100000)
+
+            st.divider()
+
+            st.markdown("### 💸 4. Chi Phí Sale & Hoa Hồng")
+            c4_1, c4_2, c4_3, c4_4 = st.columns(4)
+            with c4_1: sale_thao = st.number_input("Hoa hồng Sale Thảo", step=50000)
+            with c4_2: sale_nga = st.number_input("Hoa hồng Sale Nga", step=50000)
+            with c4_3: sale_linh = st.number_input("Hoa hồng Sale Linh", step=50000)
+            with c4_4: cong_ty = st.number_input("Chi phí Công ty", step=50000)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            if st.form_submit_button("💾 LƯU HỢP ĐỒNG LÊN MÂY", type="primary", use_container_width=True):
                 new_data = {"Tòa nhà": chon_toa, "Mã căn": chon_can, "Toà": chon_toa, "Chủ nhà - sale": chu_nha_sale, 
                             "Ngày ký": pd.to_datetime(ngay_ky), "Ngày hết HĐ": pd.to_datetime(ngay_het_hd), "Giá HĐ": gia_hd,
                             "TT cho chủ nhà": tt_chu_nha, "Tên khách thuê": ten_khach, "Ngày in": pd.to_datetime(ngay_in), "Ngày out": pd.to_datetime(ngay_out),
@@ -375,15 +396,14 @@ if sh:
                 save_data(df_up, "HOP_DONG"); time.sleep(2); st.rerun()
             except Exception as e: st.error(f"Lỗi: {e}")
 
-    # --- TAB 2: CHI PHÍ NỘI BỘ (THÊM CỘT CHỈ SỐ ĐỒNG HỒ) ---
     with tabs[2]:
         st.subheader("💸 Chi Phí Nội Bộ")
         with st.form("cp_form"):
-            c1, c2, c3, c4, c5 = st.columns(5) # Chia 5 cột
+            c1, c2, c3, c4, c5 = st.columns(5)
             d = c1.date_input("Ngày", date.today())
             can = c2.text_input("Mã căn")
             loai = c3.selectbox("Loại", ["Điện", "Nước", "Net", "Dọn dẹp", "Khác"])
-            chi_so = c4.text_input("Chỉ số ĐH") # Nhập số hoặc chữ (VD: 1500 - 1520)
+            chi_so = c4.text_input("Chỉ số ĐH") 
             tien = c5.number_input("Tiền", step=10000.0)
             
             if st.form_submit_button("Lưu"):
@@ -392,7 +412,7 @@ if sh:
                     "Loại": loai, 
                     "Tiền": tien, 
                     "Ngày": pd.to_datetime(d), 
-                    "Chỉ số đồng hồ": str(chi_so).strip() # Ghi nhận vào DB
+                    "Chỉ số đồng hồ": str(chi_so).strip()
                 }])
                 save_data(pd.concat([df_cp, new], ignore_index=True), "CHI_PHI")
                 time.sleep(1)
